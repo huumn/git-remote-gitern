@@ -1,10 +1,12 @@
 const fs = require('fs')
 const readline = require('readline')
-// api
+const log = require('./logger.js')
+
 
 // looks in flat file for key, returning value
 // TODO: should perform binary search eventually
 const get = async(path, key) => {
+  log.profile(`get ${key}`, { level: 'debug' });
   const rl = readline.createInterface({
     input: fs.createReadStream(path),
     terminal: false
@@ -14,6 +16,7 @@ const get = async(path, key) => {
     let [lkey, value] = line.split(" ")
     if (lkey == key) {
       rl.close()
+      log.profile(`get ${key}`, { level: 'debug' });
       return value
     }
   }
@@ -26,7 +29,8 @@ const get = async(path, key) => {
 // perhaps we take a readable stream? ... the biggest problem with this is that get
 // will need a file to be efficient 
 // expected format of a line is `${key} ${value}\n`
-const writeLines = async(path, ...lines) => { 
+const insert = async(path, ...lines) => { 
+  log.profile(`insert`, { level: 'debug' });
   let outpath = path + ".temp"
 
   const rl = readline.createInterface({
@@ -54,11 +58,13 @@ const writeLines = async(path, ...lines) => {
     fs.rename(outpath, path, (err) => {
         if (err) throw err
     })
+
+    log.profile(`insert`, { level: 'debug' });
   })
 }
 
 module.exports = {
-  writeLines: writeLines,
+  insert: insert,
   get: get,
 }
 

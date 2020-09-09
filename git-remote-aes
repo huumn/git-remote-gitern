@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+
+function handleCapabilities() {
+    caps = ["fetch", "push", "option"]
+    caps.forEach((s, i) => console.log(s))
+    console.log()
+}
+
+// handleList: From https://git-scm.com/docs/git-remote-helpers
+//
+// list
+// Lists the refs, one per line, in the format "<value> <name> [<attr>
+// …​]". The value may be a hex sha1 hash, "@<dest>" for a symref, or
+// "?" to indicate that the helper could not get the value of the
+// ref. A space-separated list of attributes follows the name;
+// unrecognized attributes are ignored. The list ends with a blank
+// line.
+//
+// list for-push
+// Similar to list, except that it is used if and only if the caller 
+// wants to the resulting ref list to prepare push commands. A helper 
+// supporting both push and fetch can use this to distinguish for which 
+// operation the output of list is going to be used, possibly reducing 
+// the amount of work that needs to be performed.
+// Supported if the helper has the "push" or "export" capability.
+function handleList() {
+    // what does git-remote-http list do in git?
+}
+
+function handlePush() {
+
+}
+
+function handleFetch() {
+
+}
+
+function handleOption() {
+
+}
+
+var readline = require('readline');
+var rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+});
+
+rl.on('line', function(line) {
+    console.error(line);
+})

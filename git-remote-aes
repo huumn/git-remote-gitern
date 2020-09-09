@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 function handleCapabilities() {
-    caps = ["fetch", "push", "option"]
+    caps = ["fetch", "push"] //, "option"]
     caps.forEach((s, i) => console.log(s))
     console.log()
 }
@@ -23,8 +23,15 @@ function handleCapabilities() {
 // operation the output of list is going to be used, possibly reducing 
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
-function handleList() {
-    // what does git-remote-http list do in git?
+const { spawn } = require('child_process');
+
+function handleList(args) {
+    // I believe all this does is what you get by calling
+    // git ls-remote -q 
+    spawn('git ls-remote -q', [], {
+        stdio: 'inherit',
+        shell: true
+    })
 }
 
 function handlePush() {
@@ -39,6 +46,8 @@ function handleOption() {
 
 }
 
+console.error(process.argv);
+
 var readline = require('readline');
 var rl = readline.createInterface({
     input: process.stdin,
@@ -48,4 +57,9 @@ var rl = readline.createInterface({
 
 rl.on('line', function(line) {
     console.error(line);
+    if (line == "capabilities") {
+        handleCapabilities()
+    } else if (line.startsWith("list")) {
+        handleList(process.argv.slice(2))
+    }
 })

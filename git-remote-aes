@@ -24,14 +24,24 @@ function handleCapabilities() {
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
 const { spawn } = require('child_process');
+var readline = require('readline');
 
-function handleList(args) {
+async function handleList(args) {
     // I believe all this does is what you get by calling
     // git ls-remote -q 
-    spawn('git ls-remote -q', [], {
-        stdio: 'inherit',
+    var ls = spawn('git ls-remote -q', [args], {
         shell: true
     })
+    var rl = readline.createInterface({
+        input: ls.stdout,
+        terminal: false
+    });
+
+    for await (const line of rl) {
+        console.log(line.replace("\t", " "))
+    }
+
+    console.log("\n")
 }
 
 function handlePush() {
@@ -46,20 +56,24 @@ function handleOption() {
 
 }
 
-console.error(process.argv);
+const main = async() => {
+    console.error(process.argv);
 
-var readline = require('readline');
-var rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false
-});
+    var rl = readline.createInterface({
+        input: process.stdin,
+        terminal: false
+    })
 
-rl.on('line', function(line) {
-    console.error(line);
-    if (line == "capabilities") {
-        handleCapabilities()
-    } else if (line.startsWith("list")) {
-        handleList(process.argv.slice(2))
+    address = "git@gitern.com:" + process.argv[3].slice("aes://".length)
+
+    for await (const line of rl) {
+        console.error(line)
+        if (line == "capabilities") {
+            handleCapabilities()
+        } else if (line.startsWith("list")) {
+            await handleList(address)
+            console.error("hi")
+        }
     }
-})
+}
+main()

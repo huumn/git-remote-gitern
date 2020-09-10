@@ -23,7 +23,7 @@ function handleCapabilities() {
 // operation the output of list is going to be used, possibly reducing 
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 var readline = require('readline');
 
 async function handleList(args) {
@@ -41,11 +41,21 @@ async function handleList(args) {
         console.log(line.replace("\t", " "))
     }
 
-    console.log("\n")
+    console.log()
 }
 
-function handlePush() {
+async function handlePush(line) {
+    var push = spawnSync('git', [line], {
+        shell: true
+    })
 
+    var dst = line.split(':')[1]
+
+    if (push.status == 0) {
+        console.log("ok", dst)
+    } else {
+        console.log("error", dst)
+    }
 }
 
 function handleFetch() {
@@ -72,7 +82,8 @@ const main = async() => {
             handleCapabilities()
         } else if (line.startsWith("list")) {
             await handleList(address)
-            console.error("hi")
+        } else if (line.startsWith("list")) {
+            await handlePush(line)
         }
     }
 }

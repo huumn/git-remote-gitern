@@ -44,18 +44,22 @@ async function handleList(args) {
     console.log()
 }
 
-async function handlePush(line) {
-    var push = spawnSync('git', [line], {
+async function handlePush(address, refspec) {
+    var push = spawnSync('git push', [address, refspec], {
         shell: true
     })
 
-    var dst = line.split(':')[1]
+    var dst = refspec.split(':')[1]
 
     if (push.status == 0) {
+        console.error("ok", push.stdout)
         console.log("ok", dst)
     } else {
+        console.error("error", push.stderr.toString())
         console.log("error", dst)
     }
+
+    console.log()
 }
 
 function handleFetch() {
@@ -82,8 +86,9 @@ const main = async() => {
             handleCapabilities()
         } else if (line.startsWith("list")) {
             await handleList(address)
-        } else if (line.startsWith("list")) {
-            await handlePush(line)
+        } else if (line.startsWith("push")) {
+            var refspec = line.split(' ')[1]
+            await handlePush(address, refspec)
         }
     }
 }

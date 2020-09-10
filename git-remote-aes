@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+const { spawn, spawnSync } = require('child_process');
+var readline = require('readline');
+
 function handleCapabilities() {
     caps = ["fetch", "push"] //, "option"]
     caps.forEach((s, i) => console.log(s))
@@ -23,8 +26,6 @@ function handleCapabilities() {
 // operation the output of list is going to be used, possibly reducing 
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
-const { spawn, spawnSync } = require('child_process');
-var readline = require('readline');
 
 async function handleList(args) {
     // I believe all this does is what you get by calling
@@ -62,12 +63,13 @@ async function handlePush(address, refspec) {
     console.log()
 }
 
-function handleFetch() {
+function handleFetch(address, remoteName, ref) {
+    var refspec = `${ref}:refs/remotes/${remoteName}/${ref}`
+    var fetch = spawnSync('git fetch', [address, refspec], {
+        shell: true
+    })
 
-}
-
-function handleOption() {
-
+    console.log()
 }
 
 const main = async() => {
@@ -89,6 +91,9 @@ const main = async() => {
         } else if (line.startsWith("push")) {
             var refspec = line.split(' ')[1]
             await handlePush(address, refspec)
+        } else if (line.startsWith("fetch")) {
+            var ref = line.split(' ')[1]
+            await handleFetch(address, process.argv[2], ref)
         }
     }
 }

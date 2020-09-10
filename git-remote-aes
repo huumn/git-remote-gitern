@@ -52,7 +52,7 @@ async function handlePush(address, refspec) {
     var dst = refspec.split(':')[1]
 
     if (push.status == 0) {
-        console.error("ok", push.stdout)
+        console.error("ok", push.stdout.toString())
         console.log("ok", dst)
     } else {
         console.error("error", push.stderr.toString())

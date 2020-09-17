@@ -41,6 +41,7 @@ async function handleList(args) {
     });
 
     for await (const line of rl) {
+        console.error(line)
         console.log(line.replace("\t", " "))
     }
 

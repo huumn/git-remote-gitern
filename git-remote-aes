@@ -29,7 +29,9 @@ function handleCapabilities() {
 
 async function handleList(args) {
     // I believe all this does is what you get by calling
-    // git ls-remote -q 
+    // git ls-remote -q
+    // alternatively we can call git-update-server-info to generate the
+    // a file that we send back https://www.git-scm.com/docs/git-update-server-info
     var ls = spawn('git ls-remote -q', [args], {
         shell: true
     })
@@ -45,7 +47,8 @@ async function handleList(args) {
     console.log()
 }
 
-async function handlePush(address, refspec) {
+function handlePush(address, refspec) {
+    // TODO: you can push a batch by just space seperating more refspecs 
     var push = spawnSync('git push', [address, refspec], {
         shell: true
     })
@@ -65,6 +68,7 @@ async function handlePush(address, refspec) {
 
 function handleFetch(address, remoteName, ref) {
     var refspec = `${ref}:refs/remotes/${remoteName}/${ref}`
+    console.error("git fetch", address, refspec)
     var fetch = spawnSync('git fetch', [address, refspec], {
         shell: true
     })

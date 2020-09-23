@@ -27,28 +27,81 @@ function handleCapabilities() {
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
 
+let refs = new Map()
 async function handleList(args) {
     // I believe all this does is what you get by calling
     // git ls-remote -q
     // alternatively we can call git-update-server-info to generate the
     // a file that we send back https://www.git-scm.com/docs/git-update-server-info
-    var ls = spawn('git ls-remote -q', [args], {
+    let ls = spawn('git ls-remote -q', [args], {
         shell: true
     })
-    var rl = readline.createInterface({
+    let rl = readline.createInterface({
         input: ls.stdout,
         terminal: false
-    });
+    })
 
     for await (const line of rl) {
-        console.error(line)
-        console.log(line.replace("\t", " "))
+        let tokens = line.split("\t")
+        console.log(tokens[0], tokens[1])
+        console.error(tokens[0], tokens[1])
+        refs[tokens[1]] = tokens[0]
     }
 
     console.log()
 }
 
+// refs are stored in refmap as $enc $regular
+const NULLSHA = "0000000000000000000000000000000000000000"
+const REFMAP = "refs/gitern/crypto/refmap"
+let refmap = new Map()
+
 function handlePush(address, refspec) {
+    if (refs.has(REFMAP)) {
+        // read in refmap
+        let refmap = spawn('git cat-file -p', [REFMAP], {
+            shell: true
+        })
+        let rl = readline.createInterface({
+            input: refmap.stdout,
+            terminal: false
+        })
+        for await (const line of rl) {
+            let tokens = line.split("\t")
+            refmap[tokens[0]] = tokens[1]
+        }
+    } else {
+        console.error("empty refmap")
+    }
+
+    // create ephemeral repo
+    // walk tree starting at ref in refspec where refspec = <ref>:remote
+    // for each object in tree
+    //      "encrypt"
+    //      store in ephermeral repo
+    // store in refmap encref=decref
+
+    // after refmap is up to date ...
+    // write refmap to string
+    let refmapsha = ""
+    let refmapfile = ""
+    for (const [encref, decref] of refmap) {
+        refmapfile += '${encref}\t${decref}\n'
+    }
+    // pipe to git hash-object -w
+    hobj = spawn("git hash-object -w --stdin", [], { shell: true })
+    child.stdout.on('data', function(data) {
+        refmapsha += data
+    });
+    child.stdout.on('close', function() {
+        // TODO create commit graph that refmap points to
+        // do remaining ops?
+        // git update-ref refs/gitern/crypto/refmap ${commitsha}
+        // git push --atomic refs/gitern/crypto/refmap ${refspec}
+    })
+    child.stdin.write(refmapfile)
+    child.stdin.end()
+
     // TODO: you can push a batch by just space seperating more refspecs 
     var push = spawnSync('git push', [address, refspec], {
         shell: true
@@ -95,10 +148,10 @@ const main = async() => {
             await handleList(address)
         } else if (line.startsWith("push")) {
             var refspec = line.split(' ')[1]
-            await handlePush(address, refspec)
+            handlePush(address, refspec)
         } else if (line.startsWith("fetch")) {
             var ref = line.split(' ')[1]
-            await handleFetch(address, process.argv[2], ref)
+            handleFetch(address, process.argv[2], ref)
         }
     }
 }

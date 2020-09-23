@@ -56,7 +56,7 @@ const NULLSHA = "0000000000000000000000000000000000000000"
 const REFMAP = "refs/gitern/crypto/refmap"
 let refmap = new Map()
 
-function handlePush(address, refspec) {
+async function handlePush(address, refspec) {
     if (refs.has(REFMAP)) {
         // read in refmap
         let refmap = spawn('git cat-file -p', [REFMAP], {
@@ -147,8 +147,8 @@ const main = async() => {
         } else if (line.startsWith("list")) {
             await handleList(address)
         } else if (line.startsWith("push")) {
-            var refspec = line.split(' ')[1]
-            handlePush(address, refspec)
+            //var refspec = line.split(' ')[1]
+            //handlePush(address, refspec)
         } else if (line.startsWith("fetch")) {
             var ref = line.split(' ')[1]
             handleFetch(address, process.argv[2], ref)

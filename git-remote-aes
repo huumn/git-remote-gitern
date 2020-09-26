@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const { spawn, spawnSync } = require('child_process');
-var readline = require('readline');
+const { spawn } = require('child_process')
+const readline = require('readline')
 
-function handleCapabilities() {
+const handleCapabilities = async () => {
     caps = ["fetch", "push"] //, "option"]
     caps.forEach((s, i) => console.log(s))
     console.log()
@@ -27,8 +27,7 @@ function handleCapabilities() {
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
 
-let refs = new Map()
-async function handleList(args) {
+const handleList = async (args) => {
     // I believe all this does is what you get by calling
     // git ls-remote -q
     // alternatively we can call git-update-server-info to generate the
@@ -45,65 +44,12 @@ async function handleList(args) {
         let tokens = line.split("\t")
         console.log(tokens[0], tokens[1])
         console.error(tokens[0], tokens[1])
-        refs[tokens[1]] = tokens[0]
     }
 
     console.log()
 }
 
-// refs are stored in refmap as $enc $regular
-// const NULLSHA = "0000000000000000000000000000000000000000"
-// const REFMAP = "refs/gitern/crypto/refmap"
-// let refmap = new Map()
-
-async function handlePush(address, refspec) {
-    // if (refs.has(REFMAP)) {
-    //     // read in refmap
-    //     let refmap = spawn('git cat-file -p', [REFMAP], {
-    //         shell: true
-    //     })
-    //     let rl = readline.createInterface({
-    //         input: refmap.stdout,
-    //         terminal: false
-    //     })
-    //     for await (const line of rl) {
-    //         let tokens = line.split("\t")
-    //         refmap[tokens[0]] = tokens[1]
-    //     }
-    // } else {
-    //     console.error("empty refmap")
-    // }
-
-    // // create ephemeral repo
-    // // given a refspec, we can find the objects that need to be sent
-    // // with git rev-list <remote ref>..<ref> --objects
-    // // walk tree starting at ref in refspec where refspec = <ref>:<remote ref>
-    // // for each object in tree
-    // //      "encrypt"
-    // //      store in ephermeral repo
-    // // store in refmap encref=decref
-
-    // // after refmap is up to date ...
-    // // write refmap to string
-    // let refmapsha = ""
-    // let refmapfile = ""
-    // for (const [encref, decref] of refmap) {
-    //     refmapfile += '${encref}\t${decref}\n'
-    // }
-    // // pipe to git hash-object -w
-    // hobj = spawn("git hash-object -w --stdin", [], { shell: true })
-    // child.stdout.on('data', function(data) {
-    //     refmapsha += data
-    // });
-    // child.stdout.on('close', function() {
-    //     // TODO create commit graph that refmap points to
-    //     // do remaining ops?
-    //     // git update-ref refs/gitern/crypto/refmap ${commitsha}
-    //     // git push --atomic refs/gitern/crypto/refmap ${refspec}
-    // })
-    // child.stdin.write(refmapfile)
-    // child.stdin.end()
-
+const handlePush = async (address, refspec) => {
     // TODO: you can push a batch by just space seperating more refspecs 
     var push = spawnSync('git push', [address, refspec], {
         shell: true
@@ -122,7 +68,7 @@ async function handlePush(address, refspec) {
     console.log()
 }
 
-function handleFetch(address, remoteName, ref) {
+const handleFetch = async (address, remoteName, ref) => {
     var refspec = `${ref}:refs/remotes/${remoteName}/${ref}`
     console.error("git fetch", address, refspec)
     var fetch = spawnSync('git fetch', [address, refspec], {
@@ -132,7 +78,7 @@ function handleFetch(address, remoteName, ref) {
     console.log()
 }
 
-const main = async() => {
+const main = async () => {
     console.error(process.argv);
 
     var rl = readline.createInterface({
@@ -149,12 +95,13 @@ const main = async() => {
         } else if (line.startsWith("list")) {
             await handleList(address)
         } else if (line.startsWith("push")) {
-            //var refspec = line.split(' ')[1]
-            //handlePush(address, refspec)
+            var refspec = line.split(' ')[1]
+            handlePush(address, refspec)
         } else if (line.startsWith("fetch")) {
             var ref = line.split(' ')[1]
             handleFetch(address, process.argv[2], ref)
         }
     }
 }
+
 main()

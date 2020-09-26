@@ -2,6 +2,7 @@
 
 const { spawn } = require('child_process')
 const readline = require('readline')
+const Mirror = require('./mirror.js')
 
 const handleCapabilities = async () => {
     caps = ["fetch", "push"] //, "option"]
@@ -49,23 +50,39 @@ const handleList = async (args) => {
     console.log()
 }
 
+const GITERN_ENCRYPT_REPO = ".git/gitern/encrypt"
 const handlePush = async (address, refspec) => {
-    // TODO: you can push a batch by just space seperating more refspecs 
-    var push = spawnSync('git push', [address, refspec], {
+    // create encrypted repo in .git if it doesn't already exist (git init does this for you)
+    // e.g. git init .git/gitern/encrypt
+    var init = spawnSync('git init --bare', [GITERN_ENCRYPT_REPO], {
         shell: true
     })
+    // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
 
-    var dst = refspec.split(':')[1]
+    mirror = new Mirror(".", GITERN_ENCRYPT_REPO)
+    var ref = refspec.split(':')[0]
+    mirror.mirror(ref)
+    console.error("completed mirror")
 
-    if (push.status == 0) {
-        console.error("ok", push.stdout.toString())
-        console.log("ok", dst)
-    } else {
-        console.error("error", push.stderr.toString())
-        console.log("error", dst)
-    }
+    // push from encrypted repo to remote
 
-    console.log()
+
+    // TODO: you can push a batch by just space seperating more refspecs 
+    // var push = spawnSync('git push', [address, refspec], {
+    //     shell: true
+    // })
+
+    // var dst = refspec.split(':')[1]
+
+    // if (push.status == 0) {
+    //     console.error("ok", push.stdout.toString())
+    //     console.log("ok", dst)
+    // } else {
+    //     console.error("error", push.stderr.toString())
+    //     console.log("error", dst)
+    // }
+
+    // console.log()
 }
 
 const handleFetch = async (address, remoteName, ref) => {

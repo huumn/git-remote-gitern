@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-const { spawn } = require('child_process')
+const { spawn, spawnSync } = require('child_process')
 const readline = require('readline')
-const Mirror = require('./mirror.js')
+const { resolve } = require('path')
+const MirrorPush = require('./mirror.js')
 
 const handleCapabilities = async () => {
     caps = ["fetch", "push"] //, "option"]
@@ -50,45 +51,60 @@ const handleList = async (args) => {
     console.log()
 }
 
+// TODO: you can push a batch by just space seperating more refspecs 
+// XXX it's unclear to me when a batch is used and when it isn't
 const GITERN_ENCRYPT_REPO = ".git/gitern/encrypt"
-const handlePush = async (address, refspec) => {
+const handlePushBatch = async(address, remote, refspecs) => {
     // create encrypted repo in .git if it doesn't already exist (git init does this for you)
     // e.g. git init .git/gitern/encrypt
-    var init = spawnSync('git init --bare', [GITERN_ENCRYPT_REPO], {
+    // bare doesn't work for some reason. Might need to set GIT_DIR
+    var init = spawnSync('git init', [GITERN_ENCRYPT_REPO], {
         shell: true
     })
-    // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
 
-    mirror = new Mirror(".", GITERN_ENCRYPT_REPO)
-    var ref = refspec.split(':')[0]
-    mirror.mirror(ref)
-    console.error("completed mirror")
+    let dsts = []
+    for (const refspec of refspecs) {
+        var [src, dst] = refspec.split(':')
+        dsts.push(dst)
 
-    // push from encrypted repo to remote
+        // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
+        mirror = new MirrorPush(".", GITERN_ENCRYPT_REPO)
+        await mirror.mirror(src, remote)
+        console.error("COMPLETED MIRROR", src)
+    }
 
+    // push to remote from mirror
+    var push = spawnSync('git push', [address, ...refspecs], {
+        shell: true,
+        cwd: resolve(GITERN_ENCRYPT_REPO),
+    })
 
-    // TODO: you can push a batch by just space seperating more refspecs 
-    // var push = spawnSync('git push', [address, refspec], {
-    //     shell: true
-    // })
+    var status = push.status == 0 ? "ok" : "error"
+    for (const dst of dsts) {
+        console.error(status, push.stdout.toString())
+        console.log(status, dst)
+    }
 
-    // var dst = refspec.split(':')[1]
-
-    // if (push.status == 0) {
-    //     console.error("ok", push.stdout.toString())
-    //     console.log("ok", dst)
-    // } else {
-    //     console.error("error", push.stderr.toString())
-    //     console.log("error", dst)
-    // }
-
-    // console.log()
+    console.error("COMPLETED PUSH", status, src, dst)
 }
 
-const handleFetch = async (address, remoteName, ref) => {
-    var refspec = `${ref}:refs/remotes/${remoteName}/${ref}`
+// TODO: first fetch into mirror
+const handleFetchBatch = async (address, remoteName, refs) => {
+    for (const ref of refs) {
+        handleFetch(address, remoteName, ref)
+    }
+}
+
+
+// TODO: fetch into mirror?
+// we'll need to store encrypted objects, then walk through and decrypt them
+// git fetch will retreive the remote ref into the mirror
+// from there, we'll need to walk the commits we pull down and store them
+// in the local repo
+const handleFetch = async (address, remote, ref) => {
+    let refspec = `${ref}:refs/remotes/${remote}/${ref}`
     console.error("git fetch", address, refspec)
-    var fetch = spawnSync('git fetch', [address, refspec], {
+    let fetch = spawnSync('git fetch', [address, refspec], {
         shell: true
     })
 
@@ -98,12 +114,15 @@ const handleFetch = async (address, remoteName, ref) => {
 const main = async () => {
     console.error(process.argv);
 
-    var rl = readline.createInterface({
+    let rl = readline.createInterface({
         input: process.stdin,
         terminal: false
     })
 
-    address = "git@gitern.com:" + process.argv[3].slice("aes://".length)
+    let remote = process.argv[2]
+    let address = "git@gitern.com:" + process.argv[3].slice("aes://".length)
+    let pushes = []
+    let fetches = []
 
     for await (const line of rl) {
         console.error(line)
@@ -112,11 +131,16 @@ const main = async () => {
         } else if (line.startsWith("list")) {
             await handleList(address)
         } else if (line.startsWith("push")) {
-            var refspec = line.split(' ')[1]
-            handlePush(address, refspec)
+            pushes.push(line.split(' ')[1])
         } else if (line.startsWith("fetch")) {
-            var ref = line.split(' ')[1]
-            handleFetch(address, process.argv[2], ref)
+            fetches.push(line.split(' ')[1])
+        } else if (line == "") {
+            if (pushes.length > 0) {
+                handlePushBatch(address, remote, pushes)
+            }
+            if (fetches.length > 0) {
+                handleFetchBatch(address, remote, fetches)
+            }
         }
     }
 }

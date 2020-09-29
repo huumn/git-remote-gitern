@@ -58,7 +58,7 @@ const handlePushBatch = async(address, remote, refspecs) => {
     // create encrypted repo in .git if it doesn't already exist (git init does this for you)
     // e.g. git init .git/gitern/encrypt
     // bare doesn't work for some reason. Might need to set GIT_DIR
-    var init = spawnSync('git init', [GITERN_ENCRYPT_REPO], {
+    var init = spawnSync('git init --bare', [GITERN_ENCRYPT_REPO], {
         shell: true
     })
 

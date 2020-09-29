@@ -11,7 +11,7 @@ class Mirror {
   }
 
   mirror = async (ref, remote, push) => {
-    let revList = spawn("git rev-list", ["--reverse", ref], this.srcSpawnOpts)
+    let revList = spawn("git rev-list", ["--reverse", ref, "--not", `--remotes=${remote}`], this.srcSpawnOpts)
   
     let readRevList = readline.createInterface({
       input: revList.stdout,

@@ -3,36 +3,35 @@ const { exit } = require('process')
 const { resolve } = require('path')
 const readline = require('readline')
 
-class MirrorPush {
+class Mirror {
   constructor(src, dest) {
     this.srcSpawnOpts = { shell: true, cwd: resolve(src), stdio: ['pipe', 'pipe', 'inherit'] }
     this.destSpawnOpts = { shell: true, cwd: resolve(dest), stdio: ['pipe', 'pipe', 'inherit'] }
     console.error(this.srcSpawnOpts, this.destSpawnOpts)
   }
 
-  mirror = async (ref, remote) => {
-    // let revList = spawn("git rev-list", ["--reverse", ref, "--not", `--remotes=${remote}`], this.srcSpawnOpts)
+  mirror = async (ref, remote, push) => {
+    let revList = spawn("git rev-list", ["--reverse", ref], this.srcSpawnOpts)
   
-    // let readRevList = readline.createInterface({
-    //   input: revList.stdout,
-    //   terminal: false
-    // })
+    let readRevList = readline.createInterface({
+      input: revList.stdout,
+      terminal: false
+    })
   
-    // let parent = null
-    // for await (const commit of readRevList) {
-    //   parent = await this.mirrorCommit(commit, parent)
-    // }
-
-    // push to mirror from local
-    var push = spawnSync('git push', [".git/gitern/encrypt", ref], this.srcSpawnOpts)
+    let parent = null
+    for await (const commit of readRevList) {
+      parent = await this.mirrorCommit(commit, parent)
+    }
 
     // update-ref <ref> <parent>
     // TODO: might be worth verifying old ref, see manpage
-    // let updateRef = spawnSync("git update-ref", [ref, parent], this.destSpawnOpts)
-    // if (updateRef.status != 0) {
-    //   console.error("failed to update-ref")
-    //   exit(updateRef.status)
-    // }
+    if (push) {
+      let updateRef = spawnSync("git update-ref", [ref, parent], this.destSpawnOpts)
+      if (updateRef.status != 0) {
+        console.error("failed to update-ref")
+        exit(updateRef.status)
+      }
+    }
   }
 
   mirrorCommit = async (commit, parent) => {
@@ -47,9 +46,9 @@ class MirrorPush {
       commitTreeArgs.push("-p", parent)
     }
   
-    // rewrite the commit with the old commit object as the message
+    // TODO: rewrite the commit with the old commit object as the message
     // commit-tree gets author info from the command line
-    // TODO: eventually we will instead use commit-tree
+    // eventually we will instead use commit-tree
     // commitTree = spawn("git commit-tree", commitTreeArgs, destSpawnOpts)
     let commitTree = spawn("git hash-object", ["-w", "--stdin", "-t", "commit"], this.destSpawnOpts)
     let catFile = spawn("git cat-file", ["commit", commit], this.srcSpawnOpts)
@@ -121,4 +120,4 @@ class MirrorPush {
   }
 }
 
-module.exports =  MirrorPush
+module.exports =  Mirror

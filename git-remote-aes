@@ -4,6 +4,7 @@ const { spawn, spawnSync } = require('child_process')
 const readline = require('readline')
 const { resolve } = require('path')
 const Mirror = require('./mirror.js')
+const log = require('./logger.js')
 
 const handleCapabilities = async () => {
     caps = ["fetch", "push"] //, "option"]
@@ -43,7 +44,7 @@ const handleList = async (args) => {
     for await (const line of rl) {
         let tokens = line.split("\t")
         console.log(tokens[0], tokens[1])
-        console.error(tokens[0], tokens[1])
+        log.verbose("remote ref: %s %s", tokens[0], tokens[1])
     }
 
     console.log()
@@ -96,7 +97,7 @@ const handlePushBatch = async (address, remote, refspecs) => {
         // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
         mirror = new Mirror(".", GITERN_MIRROR_REPO)
         await mirror.mirror(src, remote, true)
-        console.error("COMPLETED MIRROR", src)
+        log.info("completed mirror for push %s", src)
     }
 
     // push to remote from mirror
@@ -108,11 +109,11 @@ const handlePushBatch = async (address, remote, refspecs) => {
 
     var status = push.status == 0 ? "ok" : "error"
     for (const dst of dsts) {
-        console.error(status, push.stdout.toString())
+        log.verbose("push status %s %s %s", status, dst, push.stdout.toString())
         console.log(status, dst)
     }
 
-    console.error("COMPLETED PUSH", status, src, dst)
+    log.info("completed push %s %s:%s", status, src, dst)
     console.log()
 }
 
@@ -151,15 +152,18 @@ const handleFetchBatch = async (address, remote, refs) => {
         // using plumbing, mirror.js, mirror relevant commits from .git/gitern/encrypt
         mirror = new Mirror(GITERN_MIRROR_REPO, ".")
         await mirror.mirror(ref, remote, false)
-        console.error("COMPLETED MIRROR", ref)
+        log.info("completed mirror for fetch %s", ref)
     }
 
-    console.error("COMPLETED FETCH")
+    log.info("complete fetch")
     console.log()
 }
 
 const main = async () => {
-    console.error(process.argv);
+    // todo: configure log level on options
+    log.transports[0].level = 'debug'
+
+    log.verbose("command args %s", process.argv);
 
     let rl = readline.createInterface({
         input: process.stdin,
@@ -172,7 +176,7 @@ const main = async () => {
     let fetches = []
 
     for await (const line of rl) {
-        console.error(line)
+        log.info("git line '%s'", line)
         if (line == "capabilities") {
             handleCapabilities()
         } else if (line.startsWith("list")) {

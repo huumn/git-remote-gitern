@@ -2,12 +2,13 @@ const { spawn, spawnSync } = require('child_process')
 const { exit } = require('process')
 const { resolve } = require('path')
 const readline = require('readline')
+const log = require('./logger.js')
 
 class Mirror {
   constructor(src, dest) {
     this.srcSpawnOpts = { shell: true, cwd: resolve(src), stdio: ['pipe', 'pipe', 'inherit'] }
     this.destSpawnOpts = { shell: true, cwd: resolve(dest), stdio: ['pipe', 'pipe', 'inherit'] }
-    console.error(this.srcSpawnOpts, this.destSpawnOpts)
+    log.debug(this.srcSpawnOpts, this.destSpawnOpts)
   }
 
   mirror = async (ref, remote, push) => {
@@ -26,21 +27,20 @@ class Mirror {
     // update-ref <ref> <parent>
     // TODO: will be worth verifying old ref, see manpage
     if (push && parent) {
-      console.error(`git update-ref ${ref} ${parent}`)
+      log.info("git update-ref %s %s", ref, parent)
       let updateRef = spawnSync("git update-ref", [ref, parent], this.destSpawnOpts)
       if (updateRef.status != 0) {
-        console.error("failed to update-ref")
+        log.error("failed to update-ref %s %s", ref, parent)
         exit(updateRef.status)
       }
     }
   }
 
   mirrorCommit = async (commit, parent) => {
-    console.error("mirrorCommit", commit, parent)
+    log.debug("mirroring commit %s with parent %s", commit, parent)
   
     // rewrite the tree
     let tree = await this.mirrorTree(commit)
-    console.error("mirrorCommit tree", tree)
   
     let commitTreeArgs = [tree]
     if (parent) {
@@ -59,7 +59,7 @@ class Mirror {
       terminal: false
     })
     for await (const object of readCommitTree) {
-      console.error("committed tree!", object)
+      log.debug("committed tree!", object)
       return object
     }
   }
@@ -68,8 +68,7 @@ class Mirror {
     // get list of objects in tree and write them into new tree
     // if object is a tree recurse effectively doing a depth first
     // rewrite of the object graph
-  
-    console.error("mirrorTree", tree)
+    log.debug("mirroring tree %s", tree)
   
     let lsTree = spawn("git ls-tree", [tree], this.srcSpawnOpts)
     let readLsTree = readline.createInterface({
@@ -79,7 +78,7 @@ class Mirror {
   
     let objs = ""
     for await (const line of readLsTree) {
-      console.error("mirrorTree line", line)
+      log.debug("mirroring line", line)
       let [mode, type, sha1, name] = line.split(/[ \t]/)
       switch (type) {
         case "blob":
@@ -99,11 +98,11 @@ class Mirror {
           objs += `${mode} ${type} ${treesha}\t${name}\n`
           break
         default:
-          console.error("unexpected object type", type)
+          log.error("unexpected object line %s", line)
           exit(1)
       }
     }
-    console.error("mirrorTree objects", objs)
+    log.debug("making tree with objects:\n%s", objs)
     let mktree = spawn("git mktree", [], this.destSpawnOpts)
     let readMkTree = readline.createInterface({
       input: mktree.stdout,
@@ -111,13 +110,10 @@ class Mirror {
     })
     mktree.stdin.write(objs)
     mktree.stdin.end()
-    console.error("mirrorTree await mktree")
     for await (const object of readMkTree) {
-      console.error("mirrorTree mktree", object)
+      log.debug("made tree %s", object)
       return object
     }
-  
-    console.error("mirrorTree no return")
   }
 }
 

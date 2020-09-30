@@ -161,7 +161,7 @@ const handleFetchBatch = async (address, remote, refs) => {
 
 const main = async () => {
     // todo: configure log level on options
-    log.transports[0].level = 'debug'
+    log.transports[0].level = 'info'
 
     log.verbose("command args %s", process.argv);
 

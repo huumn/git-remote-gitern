@@ -8,7 +8,7 @@ class Mirror {
   constructor(src, dest) {
     this.srcSpawnOpts = { shell: true, cwd: resolve(src), stdio: ['pipe', 'pipe', 'inherit'] }
     this.destSpawnOpts = { shell: true, cwd: resolve(dest), stdio: ['pipe', 'pipe', 'inherit'] }
-    log.debug(this.srcSpawnOpts, this.destSpawnOpts)
+    log.debug("", this.srcSpawnOpts, this.destSpawnOpts)
   }
 
   mirror = async (ref, remote, push) => {
@@ -78,7 +78,7 @@ class Mirror {
   
     let objs = ""
     for await (const line of readLsTree) {
-      log.debug("mirroring line", line)
+      log.debug("mirroring line %s", line)
       let [mode, type, sha1, name] = line.split(/[ \t]/)
       switch (type) {
         case "blob":

@@ -24,7 +24,7 @@ class Mirror {
     }
 
     // update-ref <ref> <parent>
-    // TODO: might be worth verifying old ref, see manpage
+    // TODO: will be worth verifying old ref, see manpage
     if (push && parent) {
       console.error(`git update-ref ${ref} ${parent}`)
       let updateRef = spawnSync("git update-ref", [ref, parent], this.destSpawnOpts)

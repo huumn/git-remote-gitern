@@ -158,22 +158,6 @@ const handleFetchBatch = async (address, remote, refs) => {
     console.log()
 }
 
-
-// TODO: fetch into mirror?
-// we'll need to store encrypted objects, then walk through and decrypt them
-// git fetch will retreive the remote ref into the mirror
-// from there, we'll need to walk the commits we pull down and store them
-// in the local repo
-const handleFetch = async (address, remote, ref) => {
-    let refspec = `${ref}:refs/remotes/${remote}/${ref}`
-    console.error("git fetch", address, refspec)
-    let fetch = spawnSync('git fetch', [address, refspec], {
-        shell: true
-    })
-
-    console.log()
-}
-
 const main = async () => {
     console.error(process.argv);
 

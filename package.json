@@ -2,5 +2,8 @@
     "name": "git-remote-aes",
     "version": "1.0.0",
     "main": "index.js",
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "winston": "^3.3.3"
+    }
 }

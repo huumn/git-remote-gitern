@@ -189,9 +189,11 @@ const main = async () => {
         } else if (line == "") {
             if (pushes.length > 0) {
                 handlePushBatch(address, remote, pushes)
+                pushes = []
             }
             if (fetches.length > 0) {
                 handleFetchBatch(address, remote, fetches)
+                fetches = []
             }
         }
     }

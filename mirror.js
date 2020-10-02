@@ -11,6 +11,22 @@ class Mirror {
     log.debug("", this.srcSpawnOpts, this.destSpawnOpts)
   }
 
+  mirrorObject = async(object) => {
+    // to mirror an object we git cat-file blob <object> (from src) | (to dst) git hash-object -w -stdin
+    // to mutate and simulate encryption:
+    //  we do something like cat-file | aes ecrypt | hash-object
+    //    this adds a line "hey ya'll\n" to the object
+    // to unmutate and simulate decryption:
+    //  we undo something like cat-file | sed "$d" | hash-object
+    let hashObject = spawn("git hash-object", ["-w", "--stdin"], this.destSpawnOpts)
+    let catFile = spawn("git cat-file", ["blob", object], this.srcSpawnOpts)
+    catFile.stdout.pipe(hashObject.stdin)
+    let readHashObject = readline.createInterface({
+      input: hashObject.stdout,
+      terminal: false
+    })
+  }
+
   mirror = async (ref, remote, push) => {
     let revList = spawn("git rev-list", ["--reverse", ref, "--not", `--remotes=${remote}`], this.srcSpawnOpts)
   
@@ -27,7 +43,7 @@ class Mirror {
     // update-ref <ref> <parent>
     // TODO: will be worth verifying old ref, see manpage
     if (push && parent) {
-      log.info("git update-ref %s %s", ref, parent)
+      log.warn("git update-ref %s %s", ref, parent)
       let updateRef = spawnSync("git update-ref", [ref, parent], this.destSpawnOpts)
       if (updateRef.status != 0) {
         log.error("failed to update-ref %s %s", ref, parent)
@@ -51,6 +67,7 @@ class Mirror {
     // commit-tree gets author info from the command line
     // eventually we will instead use commit-tree
     // commitTree = spawn("git commit-tree", commitTreeArgs, destSpawnOpts)
+    // call (un)mutate
     let commitTree = spawn("git hash-object", ["-w", "--stdin", "-t", "commit"], this.destSpawnOpts)
     let catFile = spawn("git cat-file", ["commit", commit], this.srcSpawnOpts)
     catFile.stdout.pipe(commitTree.stdin)
@@ -82,6 +99,7 @@ class Mirror {
       let [mode, type, sha1, name] = line.split(/[ \t]/)
       switch (type) {
         case "blob":
+          // call (un)mutate
           let hashObject = spawn("git hash-object", ["-w", "--stdin"], this.destSpawnOpts)
           let catFile = spawn("git cat-file", ["blob", sha1], this.srcSpawnOpts)
           catFile.stdout.pipe(hashObject.stdin)

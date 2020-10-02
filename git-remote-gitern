@@ -88,7 +88,7 @@ const initMirrorRepo = () => {
 // XXX it's unclear to me when a batch is used and when it isn't
 const handlePushBatch = async (address, remote, refspecs) => {
     initMirrorRepo()
-    log.info("pushing refspecs %o", refspecs)
+    log.verbose("pushing refspecs %o", refspecs)
 
     let dsts = []
     for (const refspec of refspecs) {
@@ -98,7 +98,7 @@ const handlePushBatch = async (address, remote, refspecs) => {
         // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
         mirror = new Mirror(".", GITERN_MIRROR_REPO)
         await mirror.mirror(src, remote, true)
-        log.info("completed mirror for push %s %s", src, dst)
+        log.info("completed mirror for push %s", src)
     }
 
     // push to remote from mirror

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // see https://git-scm.com/docs/git-remote-helpers for details
 const { spawn, spawnSync } = require('child_process')
-const readline = require('readline')
 const { resolve } = require('path')
 const Mirror = require('./mirror.js')
 const log = require('./logger.js')
+const { lines } = require('./misc.js')
+
+const SPAWN_OPTS = { stdio: ['pipe', 'pipe', 'inherit'] }
 
 const handleCapabilities = async () => {
     caps = ["fetch", "push"] //, "option"]
@@ -33,15 +35,8 @@ const handleList = async (args) => {
     // git ls-remote -q
     // alternatively we can call git-update-server-info to generate the
     // a file that we send back https://www.git-scm.com/docs/git-update-server-info
-    let ls = spawn('git ls-remote -q', [args], {
-        shell: true
-    })
-    let rl = readline.createInterface({
-        input: ls.stdout,
-        terminal: false
-    })
-
-    for await (const line of rl) {
+    let ls = spawn('git', ['ls-remote', '-q', args], SPAWN_OPTS)
+    for await (const line of lines(ls.stdout)) {
         let tokens = line.split("\t")
         console.log(tokens[0], tokens[1])
         log.verbose("remote ref: %s %s", tokens[0], tokens[1])
@@ -55,10 +50,7 @@ const handleList = async (args) => {
 // bare doesn't work for some reason. Might need to set GIT_DIR
 const GITERN_MIRROR_REPO = ".git/gitern/encrypt"
 const initMirrorRepo = () => {
-    spawnSync('git init', [GITERN_MIRROR_REPO], {
-        shell: true,
-        stdio: ['pipe', 'pipe', 'inherit'],
-    })
+    spawnSync('git', ['init', GITERN_MIRROR_REPO], SPAWN_OPTS)
 }
 
 // push +<src>:<dst> 
@@ -102,10 +94,9 @@ const handlePushBatch = async (address, remote, refspecs) => {
     }
 
     // push to remote from mirror
-    var push = spawnSync('git push', [address, ...refspecs], {
-        shell: true,
-        cwd: resolve(GITERN_MIRROR_REPO),
-        stdio: ['pipe', 'pipe', 'inherit'],
+    var push = spawnSync('git', ['push', address, ...refspecs], {
+        ...SPAWN_OPTS,
+        cwd: resolve(GITERN_MIRROR_REPO)
     })
 
     var status = push.status == 0 ? "ok" : "error"
@@ -143,10 +134,9 @@ const handleFetchBatch = async (address, remote, refs) => {
     // fetch from remote to mirror
     // we don't do auto-gc because we'll be fetching from an
     // encrypted remote ... gc doesn't make sense
-    var push = spawnSync('git fetch --no-auto-gc', [address, ...refs], {
-        shell: true,
-        cwd: resolve(GITERN_MIRROR_REPO),
-        stdio: ['pipe', 'pipe', 'inherit'],
+    var push = spawnSync('git', ['fetch', '--no-auto-gc', address, ...refs], {
+        ...SPAWN_OPTS,
+        cwd: resolve(GITERN_MIRROR_REPO)
     })
 
     for (const ref of refs) {
@@ -166,17 +156,12 @@ const main = async () => {
 
     log.verbose("command args %s", process.argv);
 
-    let rl = readline.createInterface({
-        input: process.stdin,
-        terminal: false
-    })
-
     let remote = process.argv[2]
     let address = "git@gitern.com:" + process.argv[3].slice("aes://".length)
     let pushes = []
     let fetches = []
 
-    for await (const line of rl) {
+    for await (const line of lines(process.stdin)) {
         log.info("git line '%s'", line)
         if (line == "capabilities") {
             handleCapabilities()

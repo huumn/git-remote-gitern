@@ -1,13 +1,16 @@
 const { spawn } = require('child_process')
+const log = require('./logger.js')
+
 
 const en = async(input, output) => {
-  input.write("hi\n", () => {
-    output.pipe(input)
+  output.write("hi\n", () => {
+    input.pipe(output)
+    log.debug("encrypted object")
   })
 }
 
 const de = async(input, output) => {
-  const rmHI = spawn("tail -c +4", [], spawnOpts)
+  const rmHI = spawn("tail", ['-c', '+4'])
   input.pipe(rmHI.stdin)
   rmHI.stdout.pipe(output)
 }

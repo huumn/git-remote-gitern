@@ -78,6 +78,7 @@ const initMirrorRepo = () => {
 //
 // TODO: you can push a batch by just space seperating more refspecs 
 // XXX it's unclear to me when a batch is used and when it isn't
+const CRYPT_MAP = "refs/gitern/crypt.map"
 const handlePushBatch = async (address, remote, refspecs) => {
     initMirrorRepo()
     log.verbose("pushing refspecs %o", refspecs)
@@ -88,13 +89,15 @@ const handlePushBatch = async (address, remote, refspecs) => {
         dsts.push(dst)
 
         // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
-        mirror = new Mirror(".", GITERN_MIRROR_REPO)
+        mirror = new Mirror(".", GITERN_MIRROR_REPO, true, CRYPT_MAP)
         await mirror.mirror(src, remote, true)
         log.info("completed mirror for push %s", src)
     }
 
     // push to remote from mirror
-    var push = spawnSync('git', ['push', address, ...refspecs], {
+    // TODO: for CRYPT_MAP use with force-with-lease to guarantee
+    //       we're pushing to the right thing
+    var push = spawnSync('git', ['push', '--atomic', address, ...refspecs, CRYPT_MAP], {
         ...SPAWN_OPTS,
         cwd: resolve(GITERN_MIRROR_REPO)
     })
@@ -141,7 +144,7 @@ const handleFetchBatch = async (address, remote, refs) => {
 
     for (const ref of refs) {
         // using plumbing, mirror.js, mirror relevant commits from .git/gitern/encrypt
-        mirror = new Mirror(GITERN_MIRROR_REPO, ".")
+        mirror = new Mirror(GITERN_MIRROR_REPO, ".", false)
         await mirror.mirror(ref, remote, false)
         log.info("completed mirror for fetch %s", ref)
     }
@@ -152,12 +155,12 @@ const handleFetchBatch = async (address, remote, refs) => {
 
 const main = async () => {
     // todo: configure log level on options
-    log.transports[0].level = 'info'
+    log.transports[0].level = 'verbose'
 
     log.verbose("command args %s", process.argv);
 
     let remote = process.argv[2]
-    let address = "git@gitern.com:" + process.argv[3].slice("aes://".length)
+    let address = "git@gitern.com:" + process.argv[3].slice("gitern://".length)
     let pushes = []
     let fetches = []
 

@@ -3,7 +3,8 @@ const fs = require('fs');
 const { resolve } = require('path');
 const readline = require('readline')
 const m = require('./misc.js')
-const log = require('./logger.js')
+const log = require('./logger.js');
+const { SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION } = require('constants');
 // TODO v2: version the tag file ... ie give each a parent
 
 // TODO: should perform binary search rather than scanning
@@ -39,25 +40,21 @@ const tagWriter = (dstOpts) => {
 const insert = async(dstOpts, tag, lines) => { 
   log.profile(`insert`, { level: 'debug' })
 
-  // TODO: we also need to make sure there aren't duplicates
-  //       because if we don't do our job elsewhere there are
   lines.sort()
   tagWr = tagWriter(dstOpts)
   tagRdSt = tagReadStream(dstOpts, tag)
   if (tagRdSt) {
     for await (const line of m.lines(tagRdSt)) {
-      if (lines.length) {
-        if(line > lines[0]) {
-          tagWr.stdin.write(`${lines.shift()}\n`)
-        } else if (line == lines[0]) {
-          lines.shift()
-          log.warn("dup line %s", line)
-        } else if (line.slice(0, 20) == lines[0].slice(0, 20)) {
-          lines.shift()
-          log.warn("dup key %s", line.slice(0, 20))
-        }
+      // if any new lines go before line, write them out
+      while (lines.length && line > lines[0]) {
+        tagWr.stdin.write(`${lines.shift()}\n`)
       }
-  
+      // occasionally we are rewrite a line
+      if (line == lines[0]) {
+        lines.shift()
+        log.warn("dup line %s", line)
+      }
+
       tagWr.stdin.write(`${line}\n`)
     }
   }

@@ -24,7 +24,7 @@ class Mirror {
 
   mirror = async (ref, remote) => {
     // TODO: limit this to just the relevant objects so we don't have to recurse
-    // for non-new objects ... this will require some enref.map
+    // for non-new objects ... this will require some crypt.map
     let revList = spawn("git",
       ["rev-list", "--reverse", ref, "--not", `--remotes=${remote}`],
       this.srcOpts)
@@ -61,10 +61,10 @@ class Mirror {
     ...process.env, ...{
       GIT_AUTHOR_DATE: "1977-06-10T12:00:00",
       GIT_COMMITTER_DATE: "1994-10-13T12:00:00",
-      GIT_AUTHOR_EMAIL: "leo@mona.me",
-      GIT_AUTHOR_NAME: "Leonardo di ser Piero da Vinci",
-      GIT_COMMITTER_EMAIL: "leo@mona.me",
-      GIT_COMMITTER_NAME: "Leonardo di ser Piero da Vinci",
+      GIT_AUTHOR_EMAIL: "leo@gitern.com",
+      GIT_AUTHOR_NAME: "Leonardo da Vinci",
+      GIT_COMMITTER_EMAIL: "leo@gitern.com",
+      GIT_COMMITTER_NAME: "Leonardo da Vinci",
     }
   }
 

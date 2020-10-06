@@ -96,8 +96,10 @@ const handlePushBatch = async (address, remote, refspecs) => {
 
     // push to remote from mirror
     // TODO: for CRYPT_MAP use with force-with-lease to guarantee
-    //       we're pushing to the right thing
-    var push = spawnSync('git', ['push', '--atomic', address, ...refspecs, CRYPT_MAP], {
+    //       we're pushing to the right thing (we currently just force)
+    //       to make --force-with-lease work we need to grab the original
+    //       hash of crypt.map before mirroring
+    var push = spawnSync('git', ['push', '--atomic', address, ...refspecs, '+'+CRYPT_MAP], {
         ...SPAWN_OPTS,
         cwd: resolve(GITERN_MIRROR_REPO)
     })
@@ -155,7 +157,7 @@ const handleFetchBatch = async (address, remote, refs) => {
 
 const main = async () => {
     // todo: configure log level on options
-    log.transports[0].level = 'verbose'
+    log.transports[0].level = 'debug'
 
     log.verbose("command args %s", process.argv);
 

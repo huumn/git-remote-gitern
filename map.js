@@ -1,9 +1,7 @@
-#!/usr/bin/env node
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const { resolve } = require('path');
 const readline = require('readline')
-const { Readable } = require('stream')
 const m = require('./misc.js')
 const log = require('./logger.js')
 // TODO v2: version the tag file ... ie give each a parent
@@ -41,6 +39,8 @@ const tagWriter = (dstOpts) => {
 const insert = async(dstOpts, tag, lines) => { 
   log.profile(`insert`, { level: 'debug' })
 
+  // TODO: we also need to make sure there aren't duplicates
+  //       because if we don't do our job elsewhere there are
   lines.sort()
   tagWr = tagWriter(dstOpts)
   tagRdSt = tagReadStream(dstOpts, tag)
@@ -91,6 +91,6 @@ const update = async(dstOpts, tag, kvs) => {
 }
 
 module.exports = {
-  get : get,
-  udpate : update,
+  get: get,
+  update: update
 }

@@ -9,6 +9,7 @@ const { lines, line } = require('./misc.js')
 const log = require('./logger.js')
 const readline = require('readline')
 const crypt = require('./crypt.js')
+const { update } = require('./map.js')
 
 class Mirror {
   constructor(src, dest, push, refmaptag) {
@@ -30,6 +31,8 @@ class Mirror {
 
     let parent = null
     for await (const commit of lines(revList.stdout)) {
+      // TODO: a commit might have multiple parents ... we don't account for this
+      //       at all FUCK
       parent = await this.mirrorCommit(commit, parent)
     }
 
@@ -38,23 +41,20 @@ class Mirror {
     if (this.push) {
       if (parent) {
         log.warn("git update-ref %s %s", ref, parent)
-        let updateRef = spawnSync("git",
-          ["update-ref", ref, parent],
-          this.dstOpts)
+        let updateRef = spawnSync("git", ["update-ref", ref, parent], this.dstOpts)
         if (updateRef.status != 0) {
           log.error("failed to update-ref %s %s", ref, parent)
           exit(updateRef.status)
         }
       }
-
-      return update(this.dstOpts, this.refmaptag, this.refmap)
+      return await update(this.dstOpts, this.refmaptag, this.refmap)
     }
   }
 
   COMMIT_ENV = {
     ...process.env, ...{
       GIT_AUTHOR_DATE: "1977-06-10T12:00:00",
-      GIT_COMMITER_DATE: "1994-10-13T12:00:00",
+      GIT_COMMITTER_DATE: "1994-10-13T12:00:00",
       GIT_AUTHOR_EMAIL: "leo@mona.me",
       GIT_AUTHOR_NAME: "Leonardo di ser Piero da Vinci",
       GIT_COMMITTER_EMAIL: "leo@mona.me",
@@ -66,6 +66,8 @@ class Mirror {
     log.debug("mirroring commit %s with parent %s", commit, parent)
     // rewrite the underlying tree
     let tree = await this.mirrorTree(commit)
+    log.debug("creating commit with tree %s and parent %s", tree, parent)
+
 
     // TODO: we need to base64 encode/decode the message in addition to en/de
     let res
@@ -74,9 +76,7 @@ class Mirror {
       let args = ["commit-tree", tree]
       if (parent) args.push("-p", parent)
       let commitTree = spawn("git", args, { ...this.dstOpts, env: this.COMMIT_ENV })
-      let catFile = spawn("git",
-        ["cat-file", "commit", commit],
-        this.srcOpts)
+      let catFile = spawn("git", ["cat-file", "commit", commit], this.srcOpts)
       this.transform(catFile.stdout, commitTree.stdin)
       res = await line(commitTree.stdout)
     } else {
@@ -113,7 +113,7 @@ class Mirror {
     let lsTree = spawn("git", ['ls-tree', tree], this.srcOpts)
     let objs = ""
 
-    // TODO: encrypt file/dir names
+    // TODO: encrypt file/dir names (will need to base64 enc them)
     for await (const line of lines(lsTree.stdout)) {
       let [mode, type, oid, name] = line.split(/[ \t]/)
       switch (type) {
@@ -138,6 +138,7 @@ class Mirror {
     mktree.stdin.end()
     let object = await line(mktree.stdout)
     log.verbose("mirrored tree %s=>%s", tree, object)
+    // TODO: this isn't correct when tree is a commit!
     this.refmap[tree] = object
     return object
   }

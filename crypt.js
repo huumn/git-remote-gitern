@@ -5,7 +5,6 @@ const log = require('./logger.js')
 const en = async(input, output) => {
   output.write("hi\n", () => {
     input.pipe(output)
-    log.debug("encrypted object")
   })
 }
 

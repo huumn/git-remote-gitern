@@ -29,10 +29,16 @@ class Mirror {
       ["rev-list", "--reverse", ref, "--not", `--remotes=${remote}`],
       this.srcOpts)
 
+    // the current value of parent is the current value of ref
+    let showRef = spawnSync("git", ["show-ref", "--verify", "--hash", ref], this.dstOpts)
     let parent = null
+    if (showRef.status == 0) {
+      parent = showRef.stdout.toString().slice(0, -1)
+      log.verbose("ref %s exists and believed to be %s", ref, parent)
+    }
     for await (const commit of lines(revList.stdout)) {
       // TODO: a commit might have multiple parents ... we don't account for this
-      //       at all FUCK
+      //       at all FUCK ... need to test merges!
       parent = await this.mirrorCommit(commit, parent)
     }
 
@@ -63,11 +69,14 @@ class Mirror {
   }
 
   mirrorCommit = async (commit, parent) => {
-    log.debug("mirroring commit %s with parent %s", commit, parent)
-    // rewrite the underlying tree
-    let tree = await this.mirrorTree(commit)
-    log.debug("creating commit with tree %s and parent %s", tree, parent)
+    // get the tree to the commit
+    let logTree = spawn("git", ["log", "--format=%T", "-n", "1", commit], this.srcOpts)
+    let srcTree = await line(logTree.stdout)
+    log.debug("mirroring commit %s that has orignal tree %s", commit, srcTree)
 
+    // encrypt the underlying tree
+    let tree = await this.mirrorTree(srcTree)
+    log.debug("creating new commit with tree %s and parent %s", tree, parent)
 
     // TODO: we need to base64 encode/decode the message in addition to en/de
     let res
@@ -136,11 +145,10 @@ class Mirror {
     let mktree = spawn("git", ["mktree"], this.dstOpts)
     mktree.stdin.write(objs)
     mktree.stdin.end()
-    let object = await line(mktree.stdout)
-    log.verbose("mirrored tree %s=>%s", tree, object)
-    // TODO: this isn't correct when tree is a commit!
-    this.refmap[tree] = object
-    return object
+    let res = await line(mktree.stdout)
+    log.verbose("mirrored tree %s=>%s", tree, res)
+    this.refmap[res] = tree
+    return res
   }
 }
 

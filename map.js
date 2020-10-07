@@ -4,18 +4,32 @@ const { resolve } = require('path');
 const readline = require('readline')
 const m = require('./misc.js')
 const log = require('./logger.js');
-const { SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION } = require('constants');
 // TODO v2: version the tag file ... ie give each a parent
 
 // TODO: should perform binary search rather than scanning
 const get = async(dstOpts, tag, key) => {
-  log.profile(`get ${key}`, { level: 'debug' });
-
-  for await (const line of m.lines(tagReadStream(dstOpts, tag))) {
+  log.profile(`get value ${key}`, { level: 'debug' });
+  
+  let tagRdSt = tagReadStream(dstOpts, tag)
+  for await (const line of m.lines(tagRdSt)) {
     let [lkey, value] = line.split(" ")
     if (lkey == key) {
-      log.profile(`get ${key}`, { level: 'debug' });
+      log.profile(`get value ${key}`, { level: 'debug' });
       return value
+    }
+  }
+}
+
+// TODO: this is necessarily O(N) unless we create a reverse map
+const getKey = async(dstOpts, tag, val) => {
+  log.profile(`get key ${val}`, { level: 'debug' });
+  
+  let tagRdSt = tagReadStream(dstOpts, tag)
+  for await (const line of m.lines(tagRdSt)) {
+    let [key, lval] = line.split(" ")
+    if (lval == val) {
+      log.profile(`get key ${val}`, { level: 'debug' });
+      return key
     }
   }
 }

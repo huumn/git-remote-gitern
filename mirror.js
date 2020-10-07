@@ -24,7 +24,12 @@ class Mirror {
 
   mirror = async (ref, remote) => {
     // TODO: limit this to just the relevant objects so we don't have to recurse
-    // for non-new objects ... this will require some crypt.map
+    // for non-new objects ... 
+    // this is the command we'll run:
+    //  git rev-list refs/heads/master --objects --in-commit-order --reverse --not --remotes=gitern
+    //  it lists commits in the order we need but the objects in reverse order
+    // We'll also need to do reverse lookups in the refmap for tree objects
+    // this way we don't have to re-encrypt objects we don't have locally
     let revList = spawn("git",
       ["rev-list", "--reverse", ref, "--not", `--remotes=${remote}`],
       this.srcOpts)

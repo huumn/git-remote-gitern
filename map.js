@@ -52,7 +52,6 @@ const tagWriter = (dstOpts) => {
 }
 
 // XXX readline might be slow given it's meant for console work
-// TODO: instead of a path, take an object (commit or tag)
 // expected format of a line is `${key} ${value}\n`
 const insert = async(dstOpts, tag, lines) => { 
   log.profile(`insert`, { level: 'debug' })

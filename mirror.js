@@ -124,7 +124,6 @@ class Mirror {
     return res
   }
 
-  // TODO: test empty dir
   mirrorTree = async (oid) => {
     // get list of objects in tree and write them into new tree
     // with mutated refs

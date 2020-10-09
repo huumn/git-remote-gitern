@@ -16,7 +16,7 @@ const SPAWN_MIRROR_OPTS = {
 const CRYPT_MAP = "refs/gitern/crypt.map"
 
 const handleCapabilities = async () => {
-    caps = ["fetch", "push"] //, "option"]
+    caps = ["fetch", "push"] //, TODO: "option"]
     caps.forEach((s, i) => console.log(s))
     console.log()
 }

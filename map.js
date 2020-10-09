@@ -1,10 +1,20 @@
-const { spawn, spawnSync } = require('child_process');
-const fs = require('fs');
-const { resolve } = require('path');
+const { spawn, spawnSync } = require('child_process')
+const fs = require('fs')
+const { resolve } = require('path')
 const readline = require('readline')
 const m = require('./misc.js')
-const log = require('./logger.js');
+const log = require('./logger.js')
 // TODO v2: version the tag file ... ie give each a parent
+
+const tagReadStream = (dstOpts, tag) => {
+  // verify ref exists
+  let verfiyRef = spawnSync("git", ["show-ref", "--verify", "-q", tag], dstOpts)
+  if (verfiyRef.status != 0) {
+    return null
+  }
+
+  return spawn("git", ["cat-file", "blob", tag], dstOpts).stdout
+}
 
 // TODO: should perform binary search rather than scanning
 const get = async(dstOpts, tag, key) => {
@@ -25,23 +35,16 @@ const getKey = async(dstOpts, tag, val) => {
   log.profile(`get key ${val}`, { level: 'debug' });
   
   let tagRdSt = tagReadStream(dstOpts, tag)
-  for await (const line of m.lines(tagRdSt)) {
-    let [key, lval] = line.split(" ")
-    if (lval == val) {
-      log.profile(`get key ${val}`, { level: 'debug' });
-      return key
+  if (tagRdSt) {
+    for await (const line of m.lines(tagRdSt)) {
+      let [key, lval] = line.split(" ")
+      if (lval == val) {
+        log.profile(`get key ${val}`, { level: 'debug' });
+        return key
+      }
     }
   }
-}
-
-const tagReadStream = (dstOpts, tag) => {
-  // verify ref exists
-  let verfiyRef = spawnSync("git", ["show-ref", "--verify", "-q", tag], dstOpts)
-  if (verfiyRef.status != 0) {
-    return null
-  }
-
-  return spawn("git", ["cat-file", "blob", tag], dstOpts).stdout
+  log.error("val %s not found", val)
 }
 
 const tagWriter = (dstOpts) => {
@@ -103,5 +106,6 @@ const update = async(dstOpts, tag, kvs) => {
 
 module.exports = {
   get: get,
+  getKey: getKey,
   update: update
 }

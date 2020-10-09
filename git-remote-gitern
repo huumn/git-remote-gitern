@@ -8,6 +8,11 @@ const { lines } = require('./misc.js')
 const { get } = require('./map.js')
 
 const SPAWN_OPTS = { stdio: ['pipe', 'pipe', 'inherit'] }
+const GITERN_MIRROR_REPO = ".git/gitern/encrypt"
+const SPAWN_MIRROR_OPTS = { 
+    cwd: GITERN_MIRROR_REPO,
+    stdio: ['pipe', 'pipe', 'inherit'] 
+}
 const CRYPT_MAP = "refs/gitern/crypt.map"
 
 const handleCapabilities = async () => {
@@ -31,12 +36,12 @@ const handleCapabilities = async () => {
 // operation the output of list is going to be used, possibly reducing 
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
-const handleList = async (address, remote) => {
+const handleList = async (address) => {
     // fetch the refmap
-    let localTag = `refs/remotes/${remote}/crypt.map`
+    initMirrorRepo()
     spawnSync('git', 
-        ['fetch', address, `${CRYPT_MAP}:${localTag}`],
-        SPAWN_OPTS)
+        ['fetch', address, `+${CRYPT_MAP}:${CRYPT_MAP}`],
+        SPAWN_MIRROR_OPTS)
 
     // for each ls-remote entry look up the oid in refmap
     let ls = spawn('git', ['ls-remote', '-q', address], SPAWN_OPTS)
@@ -44,7 +49,7 @@ const handleList = async (address, remote) => {
         let [oid, ref] = line.split("\t")
         log.verbose("org ref: %s %s", oid, ref)
         if (ref != CRYPT_MAP) {
-            oid = await get(SPAWN_OPTS, localTag, oid)
+            oid = await get(SPAWN_MIRROR_OPTS, CRYPT_MAP, oid)
         }
         console.log(oid, ref)
         log.verbose("new ref: %s %s", oid, ref)
@@ -56,7 +61,6 @@ const handleList = async (address, remote) => {
 // create encrypted repo in .git if it doesn't already exist (git init does this for you)
 // e.g. git init .git/gitern/encrypt
 // bare doesn't work for some reason. Might need to set GIT_DIR
-const GITERN_MIRROR_REPO = ".git/gitern/encrypt"
 const initMirrorRepo = () => {
     spawnSync('git', ['init', GITERN_MIRROR_REPO], SPAWN_OPTS)
 }
@@ -83,9 +87,6 @@ const initMirrorRepo = () => {
 // failure of each pushed ref. The status report output is terminated by a blank
 // line. The option field <why> may be quoted in a C style string if it contains
 // an LF. Supported if the helper has the "push" capability. 
-//
-// TODO: you can push a batch by just space seperating more refspecs 
-// XXX it's unclear to me when a batch is used and when it isn't
 const handlePushBatch = async (address, remote, refspecs) => {
     initMirrorRepo()
     log.verbose("pushing refspecs %o", refspecs)
@@ -96,7 +97,7 @@ const handlePushBatch = async (address, remote, refspecs) => {
         dsts.push(dst)
 
         // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
-        mirror = new Mirror(".", GITERN_MIRROR_REPO, true, CRYPT_MAP)
+        mirror = new Mirror(".", GITERN_MIRROR_REPO, true, address, CRYPT_MAP)
         await mirror.mirror(src, remote, true)
         log.info("completed mirror for push %s", src)
     }
@@ -106,6 +107,7 @@ const handlePushBatch = async (address, remote, refspecs) => {
     //       we're pushing to the right thing (we currently just force)
     //       to make --force-with-lease work we need to grab the original
     //       hash of crypt.map before mirroring
+    log.error("%o %o", refspecs, ...refspecs)
     var push = spawnSync('git', ['push', '--atomic', address, ...refspecs, '+'+CRYPT_MAP], {
         ...SPAWN_OPTS,
         cwd: resolve(GITERN_MIRROR_REPO)
@@ -139,22 +141,22 @@ const handlePushBatch = async (address, remote, refspecs) => {
 // If option check-connectivity is requested, the helper must output
 // connectivity-ok if the clone is self-contained and connected.
 
-// TODO: when we clone we're not in the right dir
+// TODO: when we clone we're not in the right dir (need to support options)
 const handleFetchBatch = async (address, remote, refs) => {
     initMirrorRepo()
+    log.error("ji")
+    log.debug("%o",refs)
 
-    // fetch from remote to mirror
-    // we don't do auto-gc because we'll be fetching from an
-    // encrypted remote ... gc doesn't make sense
-    var push = spawnSync('git', ['fetch', '--no-auto-gc', address, ...refs], {
+    // pull into mirror so it fast-forwards
+    var pull = spawnSync('git', ['pull', address, ...refs], {
         ...SPAWN_OPTS,
         cwd: resolve(GITERN_MIRROR_REPO)
     })
 
     for (const ref of refs) {
-        // using plumbing, mirror.js, mirror relevant commits from .git/gitern/encrypt
-        mirror = new Mirror(GITERN_MIRROR_REPO, ".", false)
-        await mirror.mirror(ref, remote, false)
+        // mirror relevant commits from .git/gitern/encrypt
+        mirror = new Mirror(GITERN_MIRROR_REPO, ".", false, address, CRYPT_MAP)
+        await mirror.mirror(ref, remote)
         log.info("completed mirror for fetch %s", ref)
     }
 
@@ -170,27 +172,27 @@ const main = async () => {
 
     let remote = process.argv[2]
     let address = "git@gitern.com:" + process.argv[3].slice("gitern://".length)
-    let pushes = []
-    let fetches = []
+    let pushes = new Set()
+    let fetches = new Set()
 
     for await (const line of lines(process.stdin)) {
         log.info("git line '%s'", line)
         if (line == "capabilities") {
             handleCapabilities()
         } else if (line.startsWith("list")) {
-            await handleList(address, remote)
+            await handleList(address)
         } else if (line.startsWith("push")) {
-            pushes.push(line.split(' ')[1])
+            pushes.add(line.split(' ')[1])
         } else if (line.startsWith("fetch")) {
-            fetches.push(line.split(' ')[1])
+            fetches.add(line.split(' ')[2])
         } else if (line == "") {
-            if (pushes.length > 0) {
-                handlePushBatch(address, remote, pushes)
-                pushes = []
+            if (pushes.size > 0) {
+                await handlePushBatch(address, remote, pushes)
+                pushes.clear()
             }
-            if (fetches.length > 0) {
-                handleFetchBatch(address, remote, fetches)
-                fetches = []
+            if (fetches.size > 0) {
+                await handleFetchBatch(address, remote, fetches)
+                fetches.clear()
             }
         }
     }

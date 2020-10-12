@@ -4,6 +4,7 @@
     "main": "index.js",
     "license": "MIT",
     "dependencies": {
+        "base64-stream": "^1.0.0",
         "winston": "^3.3.3"
     }
 }

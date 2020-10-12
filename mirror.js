@@ -1,6 +1,4 @@
-// TODO: we need to exit whenever git returns an error 
-// TODO: this doesn't need to expose an object ...
-//       we have a bit of state but we don't need to expose it
+// TODO: we need to exit whenever git returns an error
 
 const { spawn, spawnSync } = require('child_process')
 const { exit } = require('process')
@@ -8,9 +6,8 @@ const { resolve } = require('path')
 const { lines, line } = require('./misc.js')
 const log = require('./logger.js')
 const readline = require('readline')
-const crypt = require('./crypt.js')
 const { get, getKey, update } = require('./map.js')
-const { generateKeyPair } = require('crypto')
+const crypt = require('./crypt.js')
 
 class Mirror {
   constructor(src, dest, push, address, refmaptag) {
@@ -18,7 +15,13 @@ class Mirror {
     this.dstOpts = { cwd: resolve(dest), stdio: ['pipe', 'pipe', 'inherit'] }
     this.mirOpts = push ? this.dstOpts : this.srcOpts
     this.push = push
-    this.transform = push ? crypt.en : crypt.de
+    if (this.push) {
+      this.cryptStream = crypt.encryptStream
+      this.cryptString = crypt.encryptString
+    } else {
+      this.cryptStream = crypt.decryptStream
+      this.cryptString = crypt.decryptString
+    }
     this.refmap = {}
     this.refmaptag = refmaptag
     log.debug("", this.srcOpts, this.dstOpts)
@@ -117,7 +120,7 @@ class Mirror {
     log.debug("mirroring blob %s", oid)
     let hashObject = spawn("git", ["hash-object", "-w", "--stdin", "-t", "blob"], this.dstOpts)
     let catFile = spawn("git", ["cat-file", "blob", oid], this.srcOpts)
-    this.transform(catFile.stdout, hashObject.stdin)
+    this.cryptStream(catFile.stdout, hashObject.stdin)
     let res = await line(hashObject.stdout)
     log.verbose("mirrored blob %s=>%s", oid, res)
     this.refmap[res] = oid
@@ -134,9 +137,8 @@ class Mirror {
 
     for await (const line of lines(lsTree.stdout)) {
       let [mode, type, oid, name] = line.split(/[ \t]/)
-      // TODO: de/encrypt names (will need to base64 enc them)
       let mapoid = await this.lookup(oid)
-      objs += `${mode} ${type} ${mapoid}\t${name}\n`
+      objs += `${mode} ${type} ${mapoid}\t${await this.cryptString(name, 'hex')}\n`
     }
 
     log.debug("making tree with objects:\n%s", objs)
@@ -153,9 +155,9 @@ class Mirror {
     ...process.env, ...{
       GIT_AUTHOR_DATE: "1977-06-10T12:00:00",
       GIT_COMMITTER_DATE: "1994-10-13T12:00:00",
-      GIT_AUTHOR_EMAIL: "leo@gitern.com",
+      GIT_AUTHOR_EMAIL: "ldv@gitern.com",
       GIT_AUTHOR_NAME: "Leonardo da Vinci",
-      GIT_COMMITTER_EMAIL: "leo@gitern.com",
+      GIT_COMMITTER_EMAIL: "ldv@gitern.com",
       GIT_COMMITTER_NAME: "Leonardo da Vinci",
     }
   }
@@ -169,7 +171,6 @@ class Mirror {
     let [tree, ...parents] = srcTree.split(/[ \t]/)
     log.verbose("tree %s parents %o", tree, parents)
 
-    // TODO: we need to base64 encode/decode the message in addition to en/de
     let res
     if (this.push) {
       // we encrypt the message and send to the encrypted message to commit-tree
@@ -181,17 +182,17 @@ class Mirror {
           args.push("-p", key)
         }
       }
-      log.error(args)
       let commitTree = spawn("git", args, { ...this.dstOpts, env: this.COMMIT_ENV })
       let catFile = spawn("git", ["cat-file", "commit", commit], this.srcOpts)
-      this.transform(catFile.stdout, commitTree.stdin)
+      commitTree.stdin.on('data', (d) => log.error("%s", d))
+      this.cryptStream(catFile.stdout, commitTree.stdin, 'base64')
       res = await line(commitTree.stdout)
     } else {
       // decrypt the message of the commit and hash the message
       // as a commit object
       let logMsg = spawn("git", ["log", "--pretty=format:%B", "-n", "1", commit], this.srcOpts)
       let hashObject = spawn("git", ["hash-object", "-w", "--stdin", "-t", "commit"], this.dstOpts)
-      this.transform(logMsg.stdout, hashObject.stdin)
+      this.cryptStream(logMsg.stdout, hashObject.stdin, 'base64')
       res = await line(hashObject.stdout)
     }
 

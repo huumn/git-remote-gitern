@@ -51,7 +51,6 @@ const tagWriter = (dstOpts) => {
   return spawn("git", ["hash-object","-w", "--stdin"], dstOpts)
 }
 
-// XXX readline might be slow given it's meant for console work
 // expected format of a line is `${key} ${value}\n`
 const insert = async(dstOpts, tag, lines) => { 
   log.profile(`insert`, { level: 'debug' })

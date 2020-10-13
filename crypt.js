@@ -68,7 +68,6 @@ const decryptString = (input, encoding = null) => {
 
 const encryptString = (input, encoding = null) => {
   return cryptString(encryptStream, input, encoding)
-
 }
 
 module.exports = {

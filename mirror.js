@@ -24,7 +24,7 @@ class Mirror {
     }
     this.refmap = {}
     this.refmaptag = refmaptag
-    log.debug("", this.srcOpts, this.dstOpts)
+    log.verbose("mirroring src %s dst %s", this.srcOpts.cwd, this.dstOpts.cwd)
   }
 
   lookup = async (oid) => {
@@ -44,15 +44,19 @@ class Mirror {
   }
 
   mirror = async (ref, remote) => {
+    log.debug("mirroring ref %s from remote %s", ref, remote)
+
     // prints out: oid type size
     let not
     if (this.push) {
       not = `--remotes=${remote}`
     } else {
       // for fetch read the ref from src, perform lookup to get crytoid
-      let showRef = spawn("git", ["show-ref", ref, "--hash"], this.dstOpts)
+      // --verify so we do a strict match (otherwise git looks in mirror for refs)
+      let showRef = spawn("git", ["show-ref", "--hash", '--verify', ref], this.dstOpts)
       let cid = await line(showRef.stdout)
-      if (cid) {
+      if (cid && showRef.status == 0) {
+        log.debug("ref %s has oid %s in %s", ref, cid, this.dstOpts.cwd)
         not = await getKey(this.mirOpts, this.refmaptag, cid)
       }
     }
@@ -84,7 +88,7 @@ class Mirror {
     // update-ref <ref> <parent>
     if (this.push) {
       if (lastCommit) {
-        log.warn("git update-ref %s %s", ref, lastCommit)
+        log.verbose("updating ref in dst %s %s", ref, lastCommit)
         let updateRef = spawnSync("git", ["update-ref", ref, lastCommit], this.dstOpts)
         if (updateRef.status != 0) {
           log.error("failed to update-ref %s %s", ref, lastCommit)
@@ -138,6 +142,7 @@ class Mirror {
     for await (const line of lines(lsTree.stdout)) {
       let [mode, type, oid, name] = line.split(/[ \t]/)
       let mapoid = await this.lookup(oid)
+      log.debug("tree entry %s=>%s", oid, mapoid)
       objs += `${mode} ${type} ${mapoid}\t${await this.cryptString(name, 'hex')}\n`
     }
 
@@ -167,9 +172,8 @@ class Mirror {
     // get the tree to the commit
     let logTree = spawn("git", ["log", "--pretty=%T\ %P", "-n", "1", commit], this.srcOpts)
     let srcTree = await line(logTree.stdout)
-    log.verbose("srcTree %s %s", commit, srcTree)
     let [tree, ...parents] = srcTree.split(/[ \t]/)
-    log.verbose("tree %s parents %o", tree, parents)
+    log.debug("mirroring commit %s with tree %s parents %o", commit, tree, parents)
 
     let res
     if (this.push) {

@@ -6,20 +6,53 @@ const Mirror = require('./mirror.js')
 const log = require('./logger.js')
 const { lines } = require('./misc.js')
 const { get } = require('./map.js')
+const { exit } = require('process')
 
-const SPAWN_OPTS = { stdio: ['pipe', 'pipe', 'inherit'] }
-const GITERN_MIRROR_REPO = ".git/gitern/encrypt"
+const GIT_DIR = process.env.GIT_DIR
+const DIR = resolve(GIT_DIR + "/..")
+const GITERN_MIRROR_REPO = GIT_DIR + "/gitern/crypt"
+const SPAWN_OPTS = { 
+    stdio: ['pipe', 'pipe', 'inherit'] 
+}
 const SPAWN_MIRROR_OPTS = { 
     cwd: GITERN_MIRROR_REPO,
     stdio: ['pipe', 'pipe', 'inherit'] 
 }
 const CRYPT_MAP = "refs/gitern/crypt.map"
+let cloning = false
 
 const handleCapabilities = async () => {
-    caps = ["fetch", "push"] //, TODO: "option"]
+    caps = ["fetch", "push", "option"]
     caps.forEach((s, i) => console.log(s))
     console.log()
 }
+
+// we only support verbosity and TODO cloning currently
+const handleOption = async (option, arg) => {
+    log.debug("setting option %s to %s", option, arg)
+    switch(option) {
+        case "verbosity":
+            // default to 'info' == 2
+            log.transports[0].level = 
+                Object.keys(log.levels).find(key => log.levels[key] == Number(arg) + 1)
+            console.log("ok")
+            break
+        case "cloning":
+            // we don't support cloning because after a clone
+            // git deletes any GIT_DIRS inside GIT_DIR so
+            // gitern/crypt is useless
+            console.error("cloning is not supported (use git init & git pull)")
+            exit(1)
+        default:
+            console.log("unsupported")
+            break
+    }
+}
+
+// when we startup we need to see if there's a tree of keys
+// perhaps they can be tagged at crypt.keys 
+// keys meaning a 256 bit aes key encrypted with every gitern user's
+// SSH pub keys
 
 // list
 // Lists the refs, one per line, in the format "<value> <name> [<attr>
@@ -37,6 +70,8 @@ const handleCapabilities = async () => {
 // the amount of work that needs to be performed.
 // Supported if the helper has the "push" or "export" capability.
 const handleList = async (address) => {
+    log.debug("handle list address %s", address)
+
     // fetch the refmap
     initMirrorRepo()
     spawnSync('git', 
@@ -44,15 +79,14 @@ const handleList = async (address) => {
         SPAWN_MIRROR_OPTS)
 
     // for each ls-remote entry look up the oid in refmap
-    let ls = spawn('git', ['ls-remote', '-q', address], SPAWN_OPTS)
+    let ls = spawn('git', ['ls-remote', '-q', address], SPAWN_MIRROR_OPTS)
     for await (const line of lines(ls.stdout)) {
         let [oid, ref] = line.split("\t")
-        log.verbose("org ref: %s %s", oid, ref)
         if (ref != CRYPT_MAP) {
-            oid = await get(SPAWN_MIRROR_OPTS, CRYPT_MAP, oid)
-        }
-        console.log(oid, ref)
-        log.verbose("new ref: %s %s", oid, ref)
+            let newoid = await get(SPAWN_MIRROR_OPTS, CRYPT_MAP, oid)
+            console.log(newoid, ref)
+            log.debug("ref: %s=>%s %s", oid, newoid, ref)
+        }   
     }
 
     console.log()
@@ -60,8 +94,9 @@ const handleList = async (address) => {
 
 // create encrypted repo in .git if it doesn't already exist (git init does this for you)
 // e.g. git init .git/gitern/encrypt
-// bare doesn't work for some reason. Might need to set GIT_DIR
+// XXX bare doesn't work for some reason. Might need to set GIT_DIR
 const initMirrorRepo = () => {
+    log.verbose("(re)initing mirror repo")
     spawnSync('git', ['init', GITERN_MIRROR_REPO], SPAWN_OPTS)
 }
 
@@ -88,8 +123,10 @@ const initMirrorRepo = () => {
 // line. The option field <why> may be quoted in a C style string if it contains
 // an LF. Supported if the helper has the "push" capability. 
 const handlePushBatch = async (address, remote, refspecs) => {
-    initMirrorRepo()
-    log.verbose("pushing refspecs %o", refspecs)
+    log.debug("handle push address %s remote %s refs %o", address, remote, refspecs)
+
+    // TODO: update crypt.keys
+    log.debug("pushing refspecs %o", refspecs)
 
     let dsts = []
     for (const refspec of refspecs) {
@@ -97,9 +134,9 @@ const handlePushBatch = async (address, remote, refspecs) => {
         dsts.push(dst)
 
         // using plumbing, mirror.js, mirror relevant commits into .git/gitern/encrypt
-        mirror = new Mirror(".", GITERN_MIRROR_REPO, true, address, CRYPT_MAP)
+        mirror = new Mirror(DIR, GITERN_MIRROR_REPO, true, address, CRYPT_MAP)
         await mirror.mirror(src, remote, true)
-        log.info("completed mirror for push %s", src)
+        log.debug("completed mirror for push %s", src)
     }
 
     // push to remote from mirror
@@ -107,19 +144,16 @@ const handlePushBatch = async (address, remote, refspecs) => {
     //       we're pushing to the right thing (we currently just force)
     //       to make --force-with-lease work we need to grab the original
     //       hash of crypt.map before mirroring
-    log.error("%o %o", refspecs, ...refspecs)
-    var push = spawnSync('git', ['push', '--atomic', address, ...refspecs, '+'+CRYPT_MAP], {
-        ...SPAWN_OPTS,
-        cwd: resolve(GITERN_MIRROR_REPO)
-    })
+    var push = spawnSync('git', ['push', '--atomic', address, ...refspecs, '+'+CRYPT_MAP], 
+        SPAWN_MIRROR_OPTS)
 
     var status = push.status == 0 ? "ok" : "error"
     for (const dst of dsts) {
-        log.verbose("push status %s %s %s", status, dst, push.stdout.toString())
+        log.debug("push status %s %s %s", status, dst, push.stdout.toString())
         console.log(status, dst)
     }
 
-    log.info("completed push %s %s:%s", status, src, dst)
+    log.verbose("completed push %o", refspecs)
     console.log()
 }
 
@@ -143,42 +177,39 @@ const handlePushBatch = async (address, remote, refspecs) => {
 
 // TODO: when we clone we're not in the right dir (need to support options)
 const handleFetchBatch = async (address, remote, refs) => {
-    initMirrorRepo()
-    log.error("ji")
-    log.debug("%o",refs)
+    log.debug("handle fetch address %s remote %s refs %o", address, remote, refs)
 
-    // pull into mirror so it fast-forwards
-    var pull = spawnSync('git', ['pull', address, ...refs], {
-        ...SPAWN_OPTS,
-        cwd: resolve(GITERN_MIRROR_REPO)
-    })
+    // when cloning git attempts to fetch HEAD
+    // refs.delete('HEAD')
+    // pull into mirror so it merges
+    spawnSync('git', ['pull', address, ...refs], SPAWN_MIRROR_OPTS)
 
     for (const ref of refs) {
-        // mirror relevant commits from .git/gitern/encrypt
-        mirror = new Mirror(GITERN_MIRROR_REPO, ".", false, address, CRYPT_MAP)
+        // mirror relevant commits from encrypted
+        mirror = new Mirror(GITERN_MIRROR_REPO, DIR, false, address, CRYPT_MAP)
         await mirror.mirror(ref, remote)
-        log.info("completed mirror for fetch %s", ref)
+        log.verbose("completed mirror for fetch %s", ref)
     }
 
-    log.info("complete fetch")
+    log.verbose("complete fetch for %o", refs)
     console.log()
 }
 
+const GITERN_PREFIX = "gitern://"
+const SSH_PREFIX = "git@gitern.com:"
 const main = async () => {
-    // todo: configure log level on options
-    log.transports[0].level = 'debug'
-
-    log.verbose("command args %s", process.argv);
-
     let remote = process.argv[2]
-    let address = "git@gitern.com:" + process.argv[3].slice("gitern://".length)
+    let address = process.argv[3].replace(GITERN_PREFIX, SSH_PREFIX)
     let pushes = new Set()
     let fetches = new Set()
 
     for await (const line of lines(process.stdin)) {
-        log.info("git line '%s'", line)
+        log.verbose("git command '%s'", line)
         if (line == "capabilities") {
             handleCapabilities()
+        } else if (line.startsWith("option")) {
+            let [, option, arg] = line.split(' ')
+            await handleOption(option, arg)
         } else if (line.startsWith("list")) {
             await handleList(address)
         } else if (line.startsWith("push")) {

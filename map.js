@@ -18,33 +18,40 @@ const tagReadStream = (dstOpts, tag) => {
 
 // TODO: should perform binary search rather than scanning
 const get = async(dstOpts, tag, key) => {
-  log.profile(`get value ${key}`, { level: 'debug' });
+  log.profile(`get value ${key}`, { level: 'silly' });
   
   let tagRdSt = tagReadStream(dstOpts, tag)
-  for await (const line of m.lines(tagRdSt)) {
-    let [lkey, value] = line.split(" ")
-    if (lkey == key) {
-      log.profile(`get value ${key}`, { level: 'debug' });
-      return value
+  if (tagRdSt) {
+    for await (const line of m.lines(tagRdSt)) {
+      let [lkey, value] = line.split(" ")
+      if (lkey == key) {
+        log.profile(`get value ${key}`, { level: 'silly' });
+        return value
+      }
     }
+    log.error("key %s not found", key)
+    return
   }
+  log.error("tag %s not found in %s", tag, dstOpts.cwd)
 }
 
 // TODO: this is necessarily O(N) unless we create a reverse map
 const getKey = async(dstOpts, tag, val) => {
-  log.profile(`get key ${val}`, { level: 'debug' });
+  log.profile(`get key ${val}`, { level: 'silly' });
   
   let tagRdSt = tagReadStream(dstOpts, tag)
   if (tagRdSt) {
     for await (const line of m.lines(tagRdSt)) {
       let [key, lval] = line.split(" ")
       if (lval == val) {
-        log.profile(`get key ${val}`, { level: 'debug' });
+        log.profile(`get key ${val}`, { level: 'silly' });
         return key
       }
     }
+    log.error("val %s not found", val)
+    return
   }
-  log.error("val %s not found", val)
+  log.error("tag %s not found in %s", tag, dstOpts.cwd)
 }
 
 const tagWriter = (dstOpts) => {
@@ -53,7 +60,7 @@ const tagWriter = (dstOpts) => {
 
 // expected format of a line is `${key} ${value}\n`
 const insert = async(dstOpts, tag, lines) => { 
-  log.profile(`insert`, { level: 'debug' })
+  log.profile(`insert`, { level: 'silly' })
 
   lines.sort()
   tagWr = tagWriter(dstOpts)
@@ -80,7 +87,7 @@ const insert = async(dstOpts, tag, lines) => {
   }
 
   tagWr.stdin.end()
-  log.profile(`insert`, { level: 'debug' });
+  log.profile(`insert`, { level: 'silly' });
   return await m.line(tagWr.stdout)
 }
 

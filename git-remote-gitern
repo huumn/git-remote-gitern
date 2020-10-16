@@ -7,6 +7,7 @@ const log = require('./logger.js')
 const { lines } = require('./misc.js')
 const { get } = require('./map.js')
 const { exit } = require('process')
+const { pathToFileURL } = require('url')
 
 const GIT_DIR = process.env.GIT_DIR
 const DIR = resolve(GIT_DIR + "/..")
@@ -197,9 +198,18 @@ const handleFetchBatch = async (address, remote, refs) => {
 
 const GITERN_PREFIX = "gitern://"
 const SSH_PREFIX = "git@gitern.com:"
+const parseAddr = (address) => {
+    let uri = address.replace(GITERN_PREFIX, '')
+    let account = uri.split(path.sep).filter((p) => p.length)[0]
+    return {
+        sshAddr: SSH_PREFIX + uri,
+        account,
+    }
+}
+
 const main = async () => {
     let remote = process.argv[2]
-    let address = process.argv[3].replace(GITERN_PREFIX, SSH_PREFIX)
+    let {sshAddr, account} = parseAddr(process.argv[3])
     let pushes = new Set()
     let fetches = new Set()
 
@@ -211,18 +221,18 @@ const main = async () => {
             let [, option, arg] = line.split(' ')
             await handleOption(option, arg)
         } else if (line.startsWith("list")) {
-            await handleList(address)
+            await handleList(sshAddr)
         } else if (line.startsWith("push")) {
             pushes.add(line.split(' ')[1])
         } else if (line.startsWith("fetch")) {
             fetches.add(line.split(' ')[2])
         } else if (line == "") {
             if (pushes.size > 0) {
-                await handlePushBatch(address, remote, pushes)
+                await handlePushBatch(sshAddr, remote, pushes)
                 pushes.clear()
             }
             if (fetches.size > 0) {
-                await handleFetchBatch(address, remote, fetches)
+                await handleFetchBatch(sshAddr, remote, fetches)
                 fetches.clear()
             }
         }

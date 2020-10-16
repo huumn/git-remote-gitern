@@ -1,10 +1,12 @@
 {
-    "name": "git-remote-aes",
+    "name": "git-remote-gitern",
     "version": "1.0.0",
     "main": "index.js",
     "license": "MIT",
     "dependencies": {
-        "base64-stream": "^1.0.0",
+        "findit": "^2.0.0",
+        "read": "^1.0.7",
+        "sshpk": "^1.16.1",
         "winston": "^3.3.3"
     }
 }

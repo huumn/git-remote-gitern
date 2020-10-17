@@ -1,66 +1,90 @@
-
-const { spawn } = require('child_process')
+const { spawn, spawnSync } = require('child_process')
 const { lines, line } = require('./misc.js')
 const sshpk = require('sshpk')
 const { publicEncrypt } = require('crypto')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
+const log = require('./logger.js')
+const findit = require('findit')
+
+const FP_PREFIX = "SHA256:"
+const PUBEXT = ".pub"
 
 
-// at CRYPT_KEYS it's a tree like 
+// tag points to a tree in repoOpts like 
 // 100644 blob <sha1>	<sha256 of user's pubkey>
 // ...
 // The contents of the blob is the AES key encrypted with the user's pubkey
-class LockedKeychain {
+class Keys {
   constructor(tag, repoOpts) {
     this.repoOpts = repoOpts
     this.tag = tag
     this.lockedKeys = new Map()
-    loadLockedKeys()
+    log.debug("new keys with tag %s opts %o", tag, repoOpts)
+  }
+
+  load = async() => {
+    await this.loadLockedKeys()
 
     if (this.lockedKeys.size) {
-      this.key = unlock
+      this.key = await this.unlock()
+      log.debug("found existing encryption key")
     } else {
-      this.key = generateKey()
+      this.key = this.generateKey()
+      log.debug("encryption key not found, generating")
     }
   }
 
   generateKey = () => crypto.randomBytes(32)
 
+  hexEncodeFp = (fp) => {
+    return Buffer.from(fp.replace(FP_PREFIX, ''), 'base64').toString('hex')
+  }
+
+  hexDecodeFp = (hex) => {
+    return FP_PREFIX + Buffer.from(hex, 'hex').toString('base64').replace('=','')
+  }
+
   loadLockedKeys = async() => {
     let lsTree = spawn("git", ['ls-tree', this.tag], this.repoOpts)
     for await (const line of lines(lsTree.stdout)) {
       let [mode, type, oid, name] = line.split(/[ \t]/)
-      this.lockedKeys[name] = {mode, type, oid}
+      let fp  = this.hexDecodeFp(name)
+      log.debug("found locked key with fp %s", fp)
+      this.lockedKeys.set(fp, {mode, type, oid})
     }
   }
 
-  saveLockedKeys = () => {
+  saveLockedKeys = async() => {
     let mktree = spawn("git", ["mktree"], this.repoOpts)
+    log.debug("saving lockedKeys entries %d", this.lockedKeys.size)
     let objs = ""
     for (const [name, {mode, type, oid}] of this.lockedKeys.entries()) {
-      objs += `${mode} ${type} ${oid}\t${name}`
+      objs += `${mode} ${type} ${oid}\t${this.hexEncodeFp(name)}\n`
     }
+    log.debug("saving locked keys:\n%s", objs)
     mktree.stdin.write(objs)
     mktree.stdin.end()
     let oid = await line(mktree.stdout)
     
-    let updateRef = spawnSync("git", ["update-ref", tag, oid], this.repoOpts)
+    let updateRef = spawnSync("git", ["update-ref", this.tag, oid], this.repoOpts)
     if (updateRef.status != 0) {
-      log.error("failed to update tag ref %s %s", ref, parent)
+      log.error("failed to update tag ref %s %s", this.tag, oid)
       throw updateRef.status
     }
   }
 
-  addLockedKey = (fp, lockedKey) => {
+  addLockedKey = async(fp, lockedKey) => {
     let hashObject = spawn("git", ["hash-object", "-w", "--stdin"], this.repoOpts)
     hashObject.stdin.write(lockedKey)
     hashObject.stdin.end()
     let oid = await line(hashObject.stdout)
-    keychain[fp] = {mode, type, oid}
+    this.lockedKeys.set(fp, {mode: "100644", type: "blob", oid})
+    log.debug("added locked key fp %s oid %s", fp, oid)
   }
 
-  save = () => {
+  save = async(account) => {
     let giternList = spawn("ssh", ["git@gitern.com", "gitern-pubkey-list", 
       "--full", account])
     let updated = false
@@ -68,41 +92,43 @@ class LockedKeychain {
     for await (const line of lines(giternList.stdout)) {
       let key = sshpk.parseKey(line)
       let fp = key.fingerprint().toString()
+      log.debug("account %s has pubkey %s", account, fp)
       if (this.lockedKeys.has(fp)) continue
 
-      update = true
+      updated = true
       let lockedKey = crypto.publicEncrypt(key.toBuffer('pkcs8'), this.key)
-      addLockedKey(fp, lockedKey)
+      await this.addLockedKey(fp, lockedKey)
     }
     
-    if (updated) saveLockedKeys()
+    if (updated) this.saveLockedKeys()
   }
 
   getPrivateKeyPass = (privKeyFname) => {
     return new Promise((ok, err) => {
-      require('read')(
-        { 
+      log.debug("Prompting for password")
+      require('read')({ 
           prompt: `Password for key ${privKeyFname}: `, 
           silent: true, 
-        }, 
-        (error, password) => {
+        }, (error, password) => {
           if (error) {
+            log.error("problem reading password", error)
             err(error)
           } else {
             ok(password)
           }        
-        }
-      )
-    }
+        })
+    })
   }
 
   getPrivateKey = async(privKeyFname, privKeyRaw, opts = {}) => {
+    log.debug("parsing private key")
     try {
-      return sshpk.parsePrivateKey(privKeyRaw, {})
+      return sshpk.parsePrivateKey(privKeyRaw, 'auto', opts)
     } catch(e) {
       if (e instanceof sshpk.KeyEncryptedError) {
-        let password = await getPrivateKeyPass(privKeyFname)
-        return this.getPrivateKey(privKeyFname, privKeyRaw, {password})
+        log.debug("key requires a password")
+        let password = await this.getPrivateKeyPass(privKeyFname)
+        return await this.getPrivateKey(privKeyFname, privKeyRaw, {password})
       } else {
         throw e
       }
@@ -113,37 +139,58 @@ class LockedKeychain {
   unlock = () => {
     return new Promise((resolve, reject) => {
       let sshdir = path.join(require('os').homedir(), '.ssh')
-      let finder = require('findit')(sshdir)
+      let finder = findit(sshdir)
+      log.debug("looking for gitern ssh keys in %s", sshdir)
   
-      finder.on('file', function (file, stat) {
-        if (path.extname(file) != PUBEXT) return
+      finder.on('file', (file, stat) => {
+        if (path.extname(file) != PUBEXT) {
+          return
+        }
         
         // parse the file to see if it's the right public key
-        let privKeyRaw
-        let privKeyFname
-        let pubkey
         try {
-          pubkey = sshpk.parseKey(fs.readFileSync(file))
-          if (this.LockedKeys.has(pubkey.fingerprint())) {
+          log.debug("trying file %s", file)
+          let pubkey = sshpk.parseKey(fs.readFileSync(file))
+          let fp = pubkey.fingerprint().toString()
+          log.debug("file is an ssh key with fingerprint %s", fp)
+          if (this.lockedKeys.has(fp)) {
+            log.debug("file %s matches fp %s", file, fp)
             // attempt to read private key file
-            privKeyFname = file.slice(0, -1*PUBEXT.length)
-            privKeyRaw = fs.readFileSync(privKeyFname)
-            let privKey = getPrivateKey(privKeyFname, privKeyRaw)
-            
-            finder.stop()
+            let privKeyFname = file.slice(0, -1*PUBEXT.length)
+            let privKeyRaw = fs.readFileSync(privKeyFname)
+            this.getPrivateKey(privKeyFname, privKeyRaw.toString()).then((privKey) => {
+              finder.stop()
 
-            const {oid} = this.lockedKeys.get(privKey.fingerprint().toString())
-            const catFile = spawnSync("git", ['cat-file', '-p', oid])
-            resolve(crypto.privateDecrypt(privKey, catFile.stdout))
+              const {oid} = this.lockedKeys.get(fp)
+              const catFile = spawnSync("git", ['cat-file', '-p', oid], this.repoOpts)
+              let key = crypto.privateDecrypt({
+                key: privKey.toBuffer('pkcs8'),
+                format: 'pem',
+                type: 'pkcs8',
+              }, Buffer.from(catFile.stdout))
+              if (key.length) {
+                resolve(key)
+              } else {
+                reject(new Error('empty key'))
+              }
+            })
           }
         } catch (e) {
           // we expect this to happen for non-key files
-          if (e instanceof KeyParseError) return
+          if (e instanceof sshpk.KeyParseError) return
           reject(e)
         }
       })
-  
-      reject(new Error(`Could not find matching ssh key in ${sshdir}`))
+
+      finder.on('error', function (err) {
+        reject(err)
+      })
+
+      finder.on('end', function () {
+        reject(new Error(`Could not find matching ssh key in ${sshdir}`))
+      })
     })
   }
 }
+
+module.exports = Keys

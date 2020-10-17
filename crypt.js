@@ -2,7 +2,6 @@ const stream = require('stream')
 const crypto = require('crypto')
 
 const CIPHER = 'aes-256-cbc'
-const KEY = Buffer.from("5468576D5A7134743777217A25432A46")
 const IVSIZE = 16
 
 class IVReader extends stream.Transform {
@@ -26,7 +25,7 @@ class IVReader extends stream.Transform {
   }
 }
 
-const decryptStream = (input, output, encoding = null) => {
+const decryptStream = (key, input, output, encoding = null) => {
   let options = {}
   if (encoding) {
     // input outputs strings so we can decode them as
@@ -37,37 +36,37 @@ const decryptStream = (input, output, encoding = null) => {
   let ivr = new IVReader(options)
   input.pipe(ivr)
   ivr.on('iv', (iv) => {
-    let deci = crypto.createDecipheriv(CIPHER, KEY, iv)
+    let deci = crypto.createDecipheriv(CIPHER, key, iv)
     ivr.pipe(deci).pipe(output)
   })
 }
 
-const encryptStream = (input, output, encoding = null) => {
+const encryptStream = (key, input, output, encoding = null) => {
   let iv = crypto.randomBytes(IVSIZE)
   // use passthrough to recode stream joining iv + ciph
   let p = new stream.PassThrough(encoding ? {encoding: encoding} : {})
   // write the iv before we do anything
   p.write(iv, () => {
-    let ciph = crypto.createCipheriv(CIPHER, KEY, iv)
+    let ciph = crypto.createCipheriv(CIPHER, key, iv)
     input.pipe(ciph).pipe(p).pipe(output)
   })
 }
 
-const cryptString = (pher, input, encoding = null) => {
+const cryptString = (pher, key, input, encoding = null) => {
   let output = new stream.PassThrough()
-  pher(stream.Readable.from(input), output, encoding)
+  pher(key, stream.Readable.from(input), output, encoding)
   let result = ""
   output.on('data', (d) => result += d)
   return new Promise((resolve) => output.on('end', () => {
     resolve(result)}))
 }
 
-const decryptString = (input, encoding = null) => {
-  return cryptString(decryptStream, input, encoding)
+const decryptString = (key, input, encoding = null) => {
+  return cryptString(decryptStream, key, input, encoding)
 }
 
-const encryptString = (input, encoding = null) => {
-  return cryptString(encryptStream, input, encoding)
+const encryptString = (key, input, encoding = null) => {
+  return cryptString(encryptStream, key, input, encoding)
 }
 
 module.exports = {

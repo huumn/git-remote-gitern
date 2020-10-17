@@ -10,7 +10,7 @@ const { get, getKey, update } = require('./map.js')
 const crypt = require('./crypt.js')
 
 class Mirror {
-  constructor(src, dest, push, address, refmaptag) {
+  constructor(src, dest, push, address, refmaptag, key) {
     this.srcOpts = { cwd: resolve(src), stdio: ['pipe', 'pipe', 'inherit'] }
     this.dstOpts = { cwd: resolve(dest), stdio: ['pipe', 'pipe', 'inherit'] }
     this.mirOpts = push ? this.dstOpts : this.srcOpts
@@ -24,6 +24,7 @@ class Mirror {
     }
     this.refmap = {}
     this.refmaptag = refmaptag
+    this.key = key
     log.verbose("mirroring src %s dst %s", this.srcOpts.cwd, this.dstOpts.cwd)
   }
 
@@ -124,7 +125,7 @@ class Mirror {
     log.debug("mirroring blob %s", oid)
     let hashObject = spawn("git", ["hash-object", "-w", "--stdin", "-t", "blob"], this.dstOpts)
     let catFile = spawn("git", ["cat-file", "blob", oid], this.srcOpts)
-    this.cryptStream(catFile.stdout, hashObject.stdin)
+    this.cryptStream(this.key, catFile.stdout, hashObject.stdin)
     let res = await line(hashObject.stdout)
     log.verbose("mirrored blob %s=>%s", oid, res)
     this.refmap[res] = oid
@@ -143,7 +144,7 @@ class Mirror {
       let [mode, type, oid, name] = line.split(/[ \t]/)
       let mapoid = await this.lookup(oid)
       log.debug("tree entry %s=>%s", oid, mapoid)
-      objs += `${mode} ${type} ${mapoid}\t${await this.cryptString(name, 'hex')}\n`
+      objs += `${mode} ${type} ${mapoid}\t${await this.cryptString(this.key, name, 'hex')}\n`
     }
 
     log.debug("making tree with objects:\n%s", objs)
@@ -189,14 +190,14 @@ class Mirror {
       let commitTree = spawn("git", args, { ...this.dstOpts, env: this.COMMIT_ENV })
       let catFile = spawn("git", ["cat-file", "commit", commit], this.srcOpts)
       commitTree.stdin.on('data', (d) => log.error("%s", d))
-      this.cryptStream(catFile.stdout, commitTree.stdin, 'base64')
+      this.cryptStream(this.key, catFile.stdout, commitTree.stdin, 'base64')
       res = await line(commitTree.stdout)
     } else {
       // decrypt the message of the commit and hash the message
       // as a commit object
       let logMsg = spawn("git", ["log", "--pretty=format:%B", "-n", "1", commit], this.srcOpts)
       let hashObject = spawn("git", ["hash-object", "-w", "--stdin", "-t", "commit"], this.dstOpts)
-      this.cryptStream(logMsg.stdout, hashObject.stdin, 'base64')
+      this.cryptStream(this.key, logMsg.stdout, hashObject.stdin, 'base64')
       res = await line(hashObject.stdout)
     }
 

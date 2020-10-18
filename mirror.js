@@ -64,9 +64,11 @@ class Mirror {
     if (not) revListArgs.push(not)
     let revList = git(revListArgs, {cwd: this.src})
     let lastCommit
+    log.profile("mirror commits", {level: 'silly'})
     for await (const commit of lines(revList.stdout)) {
       lastCommit = await this.mirrorCommit(commit)
     }
+    log.profile("mirror commits", {level: 'silly'})
 
     // TODO: should verify old ref if not ephemeral - see manpage
     // update-ref <ref> <parent>

@@ -1,5 +1,5 @@
 const { git, gitSync } = require('./git.js')
-const { spawn, spawnSync } = require('child_process')
+const { spawn } = require('child_process')
 const { lines, line } = require('./misc.js')
 const sshpk = require('sshpk')
 const path = require('path')
@@ -27,7 +27,12 @@ class Keys {
     await this.loadLockedKeys()
 
     if (this.lockedKeys.size) {
-      this.key = await this.unlock()
+      try {
+        this.key = await this.unlock()
+      } catch(e) {
+        log.error("could not unlock encrytion keys with available ssh keys")
+        process.exit(1)
+      }
       log.debug("found existing encryption key")
     } else {
       this.key = this.generateKey()
@@ -105,6 +110,7 @@ class Keys {
       require('read')({ 
           prompt: `Password for key ${privKeyFname}: `, 
           silent: true, 
+          output: process.stderr,
         }, (error, password) => {
           if (error) {
             log.error("problem reading password", error)
@@ -122,9 +128,10 @@ class Keys {
       return sshpk.parsePrivateKey(privKeyRaw, 'auto', opts)
     } catch(e) {
       if (e instanceof sshpk.KeyEncryptedError) {
-        log.debug("key requires a password")
-        let password = await this.getPrivateKeyPass(privKeyFname)
-        return await this.getPrivateKey(privKeyFname, privKeyRaw, {password})
+        console.error("gitern encrypted repos do not support encrypted ssh keys currently")
+        // log.debug("key requires a password")
+        // let password = await this.getPrivateKeyPass(privKeyFname)
+        // return await this.getPrivateKey(privKeyFname, privKeyRaw, {password})
       } else {
         throw e
       }
@@ -137,6 +144,7 @@ class Keys {
       let finder = findit(sshdir)
       log.debug("looking for gitern ssh keys in %s", sshdir)
   
+      // TODO: make this syncronous so we can collect ssh passwords
       finder.on('file', (file, stat) => {
         if (path.extname(file) != PUBEXT) {
           return

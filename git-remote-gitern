@@ -7,6 +7,7 @@ const log = require('./logger.js')
 const { lines } = require('./misc.js')
 const { get } = require('./map.js')
 const Keys = require('./keys.js')
+const { exit } = require('process')
 
 const GIT_DIR = process.env.GIT_DIR
 const DIR = path.resolve(GIT_DIR + "/..")
@@ -155,7 +156,6 @@ const handlePushBatch = async (address, account, remote, refspecs) => {
     }
 
     log.verbose("completed push %o", refspecs)
-    console.log()
 }
 
 // fetch <sha1> <name> 
@@ -193,7 +193,6 @@ const handleFetchBatch = async (address, remote, refs) => {
     }
 
     log.verbose("complete fetch for %o", refs)
-    console.log()
 }
 
 const GITERN_PREFIX = "gitern://"
@@ -230,10 +229,13 @@ const main = async () => {
             if (pushes.size > 0) {
                 await handlePushBatch(sshAddr, account, remote, pushes)
                 pushes.clear()
-            }
-            if (fetches.size > 0) {
+                console.log()
+            } else if (fetches.size > 0) {
                 await handleFetchBatch(sshAddr, remote, fetches)
+                console.log()
                 fetches.clear()
+            } else {
+                process.exit(0)
             }
         }
     }

@@ -34,8 +34,7 @@ class Mirror {
     let getOID = this.push ? getKey : get
     obj = await getOID(this.mir, this.refmaptag, oid)
     if (!obj) {
-      log.error("could not find oid %s in %s", oid, this.refmaptag)
-      process.exit(1)
+      log.debug("could not find oid %s in %s", oid, this.refmaptag)
     }
     return obj
   }
@@ -59,28 +58,15 @@ class Mirror {
       }
     }
 
-    let revListArgs = ["rev-list", ref, "--objects", "--no-object-names", "--in-commit-order", 
-      "--reverse", "--not"]
+    // we depth first traverse the tree, using rev-list to give us the
+    // deepest commit nodes ... which is a minor optimization
+    let revListArgs = ["rev-list", "--in-commit-order", "--reverse",  ref, "--not"]
     if (not) revListArgs.push(not)
-
-    let catFile = git(["cat-file", "--batch-check"], {cwd: this.src})
     let revList = git(revListArgs, {cwd: this.src})
-    revList.stdout.pipe(catFile.stdin)
-
-    // convert the list to depth first ordering, which is a reversal of
-    // each commit and its children
-    let commitObjs = []
-    let revListObjs = []
-    for await (const line of lines(catFile.stdout)) {
-      let [oid, type, size] = line.split(/[ \t]/)
-      if (type == "commit") {
-        revListObjs.push(...commitObjs.reverse())
-        commitObjs = []
-      }
-      commitObjs.push({oid, type})
+    let lastCommit
+    for await (const commit of lines(revList.stdout)) {
+      lastCommit = await this.mirrorCommit(commit)
     }
-    revListObjs.push(...commitObjs.reverse())
-    let lastCommit = await this.mirrorRevList(revListObjs)
 
     // TODO: should verify old ref if not ephemeral - see manpage
     // update-ref <ref> <parent>
@@ -93,28 +79,25 @@ class Mirror {
     }
   }
 
-  mirrorRevList = async (objs) => {
-    let last
-    for(const obj of objs) {
-      switch (obj.type) {
-        case "blob":
-          last = await this.mirrorBlob(obj.oid)
-          break
-        case "tree":
-          last = await this.mirrorTree(obj.oid)
-          break
-        case "commit":
-          last = await this.mirrorCommit(obj.oid)
-          break
-        default:
-          log.error("unexpected object", obj)
-          process.exit(1)
+  objInDst = async (oid) => {
+    let mapoid = await this.lookup(oid)
+    if (mapoid) {
+      let catFile = gitSync(["cat-file", "-e", mapoid], { cwd: this.dst, ignoreErr: true})
+      if (catFile.status == 0) {
+        return mapoid
       }
     }
-    return last
+    return null
   }
 
   mirrorBlob = async (oid) => {
+    // lookup oid if dne, proceed
+    let mapoid = await this.objInDst(oid)
+    if (mapoid) {
+      log.debug("blob is already mirrored %s=>%s", oid, mapoid)
+      return mapoid
+    }
+
     log.debug("mirroring blob %s", oid)
     let hashObject = git(["hash-object", "-w", "--stdin", "-t", "blob"], { cwd: this.dst })
     let catFile = git(["cat-file", "blob", oid], { cwd: this.src })
@@ -126,17 +109,33 @@ class Mirror {
   }
 
   mirrorTree = async (oid) => {
+    // lookup oid if dne, proceed
+    let mapoid = await this.objInDst(oid)
+    if (mapoid) {
+      log.debug("tree is already mirrored %s=>%s", oid, mapoid)
+      return mapoid
+    }
+
     // get list of objects in tree and write them into new tree
     // with mutated refs
     log.debug("mirroring tree %s", oid)
 
     let lsTree = git(['ls-tree', oid], { cwd: this.src })
     let objs = ""
-
     for await (const line of lines(lsTree.stdout)) {
       let [mode, type, oid, name] = line.split(/[ \t]/)
-      let mapoid = await this.lookup(oid)
-      log.debug("tree entry %s=>%s", oid, mapoid)
+      let mapoid
+      switch(type) {
+        case "blob":
+          mapoid = await this.mirrorBlob(oid)
+          break
+        case "tree":
+          mapoid = await this.mirrorTree(oid)
+          break
+        default:
+          log.error("unknown object type, line: %s", line)
+      }
+
       objs += `${mode} ${type} ${mapoid}\t${await this.cryptString(this.key, name, 'hex')}\n`
     }
 
@@ -161,16 +160,18 @@ class Mirror {
 
   // TODO: test merges
   mirrorCommit = async (commit, parent) => {
-    // get the tree to the commit
+    // assume parents have been seen because rev-list actually works for that
     let logTree = git(["log", "--pretty=%T\ %P", "-n", "1", commit], { cwd: this.src })
     let srcTree = await line(logTree.stdout)
     let [tree, ...parents] = srcTree.split(/[ \t]/)
     log.debug("mirroring commit %s with tree %s parents %o", commit, tree, parents)
+    
+    let mirroredTree = await this.mirrorTree(tree)
 
     let res
     if (this.push) {
       // we encrypt the message and send to the encrypted message to commit-tree
-      let args = ["commit-tree", await this.lookup(tree)]
+      let args = ["commit-tree", mirroredTree]
       for (const p of parents) {
         // if there aren't parents we get one parent that == ""
         if (p.length) {

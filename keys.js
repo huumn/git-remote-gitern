@@ -1,7 +1,7 @@
+const { git, gitSync } = require('./git.js')
 const { spawn, spawnSync } = require('child_process')
 const { lines, line } = require('./misc.js')
 const sshpk = require('sshpk')
-const { publicEncrypt } = require('crypto')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
@@ -11,17 +11,16 @@ const findit = require('findit')
 const FP_PREFIX = "SHA256:"
 const PUBEXT = ".pub"
 
-
-// tag points to a tree in repoOpts like 
+// tag points to a tree in repo like 
 // 100644 blob <sha1>	<sha256 of user's pubkey>
 // ...
 // The contents of the blob is the AES key encrypted with the user's pubkey
 class Keys {
-  constructor(tag, repoOpts) {
-    this.repoOpts = repoOpts
+  constructor(tag, repo) {
+    this.repo = repo
     this.tag = tag
     this.lockedKeys = new Map()
-    log.debug("new keys with tag %s opts %o", tag, repoOpts)
+    log.debug("new keys with tag %s repo %s", tag, repo)
   }
 
   load = async() => {
@@ -47,7 +46,8 @@ class Keys {
   }
 
   loadLockedKeys = async() => {
-    let lsTree = spawn("git", ['ls-tree', this.tag], this.repoOpts)
+    // TODO: rather than ignore error we should probably check if exists
+    let lsTree = git(['ls-tree', this.tag], { cwd : this.repo, ignoreErr: true })
     for await (const line of lines(lsTree.stdout)) {
       let [mode, type, oid, name] = line.split(/[ \t]/)
       let fp  = this.hexDecodeFp(name)
@@ -57,7 +57,7 @@ class Keys {
   }
 
   saveLockedKeys = async() => {
-    let mktree = spawn("git", ["mktree"], this.repoOpts)
+    let mktree = git(["mktree"], { cwd : this.repo })
     log.debug("saving lockedKeys entries %d", this.lockedKeys.size)
     let objs = ""
     for (const [name, {mode, type, oid}] of this.lockedKeys.entries()) {
@@ -68,15 +68,11 @@ class Keys {
     mktree.stdin.end()
     let oid = await line(mktree.stdout)
     
-    let updateRef = spawnSync("git", ["update-ref", this.tag, oid], this.repoOpts)
-    if (updateRef.status != 0) {
-      log.error("failed to update tag ref %s %s", this.tag, oid)
-      throw updateRef.status
-    }
+    gitSync(["update-ref", this.tag, oid], { cwd : this.repo })
   }
 
   addLockedKey = async(fp, lockedKey) => {
-    let hashObject = spawn("git", ["hash-object", "-w", "--stdin"], this.repoOpts)
+    let hashObject = git(["hash-object", "-w", "--stdin"], { cwd : this.repo })
     hashObject.stdin.write(lockedKey)
     hashObject.stdin.end()
     let oid = await line(hashObject.stdout)
@@ -135,7 +131,6 @@ class Keys {
     }
   }
 
-  PUBEXT = ".pub"
   unlock = () => {
     return new Promise((resolve, reject) => {
       let sshdir = path.join(require('os').homedir(), '.ssh')
@@ -162,7 +157,7 @@ class Keys {
               finder.stop()
 
               const {oid} = this.lockedKeys.get(fp)
-              const catFile = spawnSync("git", ['cat-file', '-p', oid], this.repoOpts)
+              const catFile = gitSync(['cat-file', '-p', oid], { cwd : this.repo })
               let key = crypto.privateDecrypt({
                 key: privKey.toBuffer('pkcs8'),
                 format: 'pem',

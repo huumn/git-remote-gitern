@@ -1,26 +1,24 @@
-const { spawn, spawnSync } = require('child_process')
-const fs = require('fs')
-const { resolve } = require('path')
-const readline = require('readline')
+const { git, gitSync } = require('./git.js')
 const m = require('./misc.js')
 const log = require('./logger.js')
 // TODO v2: version the tag file ... ie give each a parent
 
-const tagReadStream = (dstOpts, tag) => {
+const tagReadStream = (dst, tag) => {
   // verify ref exists
-  let verfiyRef = spawnSync("git", ["show-ref", "--verify", "-q", tag], dstOpts)
+  let verfiyRef = gitSync(["show-ref", "--verify", "-q", tag], 
+    { cwd : dst, ignoreErr: true})
   if (verfiyRef.status != 0) {
     return null
   }
 
-  return spawn("git", ["cat-file", "blob", tag], dstOpts).stdout
+  return git(["cat-file", "blob", tag], { cwd : dst }).stdout
 }
 
 // TODO: should perform binary search rather than scanning
-const get = async(dstOpts, tag, key) => {
+const get = async(dst, tag, key) => {
   log.profile(`get value ${key}`, { level: 'silly' });
   
-  let tagRdSt = tagReadStream(dstOpts, tag)
+  let tagRdSt = tagReadStream(dst, tag)
   if (tagRdSt) {
     for await (const line of m.lines(tagRdSt)) {
       let [lkey, value] = line.split(" ")
@@ -32,14 +30,14 @@ const get = async(dstOpts, tag, key) => {
     log.error("key %s not found", key)
     return
   }
-  log.error("tag %s not found in %s", tag, dstOpts.cwd)
+  log.error("tag %s not found in %s", tag, dst)
 }
 
 // TODO: this is necessarily O(N) unless we create a reverse map
-const getKey = async(dstOpts, tag, val) => {
+const getKey = async(dst, tag, val) => {
   log.profile(`get key ${val}`, { level: 'silly' });
   
-  let tagRdSt = tagReadStream(dstOpts, tag)
+  let tagRdSt = tagReadStream(dst, tag)
   if (tagRdSt) {
     for await (const line of m.lines(tagRdSt)) {
       let [key, lval] = line.split(" ")
@@ -51,20 +49,20 @@ const getKey = async(dstOpts, tag, val) => {
     log.error("val %s not found", val)
     return
   }
-  log.error("tag %s not found in %s", tag, dstOpts.cwd)
+  log.error("tag %s not found in %s", tag, dst)
 }
 
-const tagWriter = (dstOpts) => {
-  return spawn("git", ["hash-object","-w", "--stdin"], dstOpts)
+const tagWriter = (dst) => {
+  return git(["hash-object","-w", "--stdin"], { cwd : dst })
 }
 
-// expected format of a line is `${key} ${value}\n`
-const insert = async(dstOpts, tag, lines) => { 
+// expected format of a line is `${key} ${value}`
+const insert = async(dst, tag, lines) => { 
   log.profile(`insert`, { level: 'silly' })
 
   lines.sort()
-  tagWr = tagWriter(dstOpts)
-  tagRdSt = tagReadStream(dstOpts, tag)
+  tagWr = tagWriter(dst)
+  tagRdSt = tagReadStream(dst, tag)
   if (tagRdSt) {
     for await (const line of m.lines(tagRdSt)) {
       // if any new lines go before line, write them out
@@ -91,21 +89,15 @@ const insert = async(dstOpts, tag, lines) => {
   return await m.line(tagWr.stdout)
 }
 
-const update = async(dstOpts, tag, kvs) => {
+const update = async(dst, tag, kvs) => {
   // write kvs to the file
   let entries = Object.entries(kvs).map(kv => {
     return `${kv[0]} ${kv[1]}`
   })
-  console.error(entries)
-  oid = await insert(dstOpts, tag, entries)
+  oid = await insert(dst, tag, entries)
   
   // update the tag to point to the new object
-  let updateRef = spawnSync("git", ["update-ref", tag, oid], dstOpts)
-  if (updateRef.status != 0) {
-    log.error("failed to update tag ref %s %s", ref, parent)
-    throw updateRef.status
-  }
-
+  gitSync(["update-ref", tag, oid], { cwd : dst })
   return oid
 }
 

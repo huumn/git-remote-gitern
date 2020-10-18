@@ -1,8 +1,4 @@
-// TODO: we need to exit whenever git returns an error
-
-const { spawn, spawnSync } = require('child_process')
-const { exit } = require('process')
-const { resolve } = require('path')
+const { git, gitSync } = require('./git.js')
 const { lines, line } = require('./misc.js')
 const log = require('./logger.js')
 const readline = require('readline')
@@ -10,10 +6,10 @@ const { get, getKey, update } = require('./map.js')
 const crypt = require('./crypt.js')
 
 class Mirror {
-  constructor(src, dest, push, address, refmaptag, key) {
-    this.srcOpts = { cwd: resolve(src), stdio: ['pipe', 'pipe', 'inherit'] }
-    this.dstOpts = { cwd: resolve(dest), stdio: ['pipe', 'pipe', 'inherit'] }
-    this.mirOpts = push ? this.dstOpts : this.srcOpts
+  constructor(src, dst, push, refmaptag, key) {
+    this.src = src
+    this.dst = dst
+    this.mir = push ? dst : src
     this.push = push
     if (this.push) {
       this.cryptStream = crypt.encryptStream
@@ -25,7 +21,7 @@ class Mirror {
     this.refmap = {}
     this.refmaptag = refmaptag
     this.key = key
-    log.verbose("mirroring src %s dst %s", this.srcOpts.cwd, this.dstOpts.cwd)
+    log.verbose("mirroring src %s to dst %s", src, dst)
   }
 
   lookup = async (oid) => {
@@ -36,10 +32,10 @@ class Mirror {
 
     // if we're pushing, dst is mirror, else src is mirror
     let getOID = this.push ? getKey : get
-    obj = await getOID(this.mirOpts, this.refmaptag, oid)
+    obj = await getOID(this.mir, this.refmaptag, oid)
     if (!obj) {
       log.error("could not find oid %s in %s", oid, this.refmaptag)
-      exit(1)
+      process.exit(1)
     }
     return obj
   }
@@ -54,11 +50,12 @@ class Mirror {
     } else {
       // for fetch read the ref from src, perform lookup to get crytoid
       // --verify so we do a strict match (otherwise git looks in mirror for refs)
-      let showRef = spawn("git", ["show-ref", "--hash", '--verify', ref], this.dstOpts)
+      let showRef = git(["show-ref", "--hash", '--verify', ref], 
+        {cwd: this.dst, ignoreErr: true})
       let cid = await line(showRef.stdout)
       if (cid && showRef.status == 0) {
-        log.debug("ref %s has oid %s in %s", ref, cid, this.dstOpts.cwd)
-        not = await getKey(this.mirOpts, this.refmaptag, cid)
+        log.debug("ref %s has oid %s in %s", ref, cid, this.dst)
+        not = await getKey(this.mir, this.refmaptag, cid)
       }
     }
 
@@ -66,8 +63,8 @@ class Mirror {
       "--reverse", "--not"]
     if (not) revListArgs.push(not)
 
-    let catFile = spawn("git", ["cat-file", "--batch-check"], this.srcOpts)
-    let revList = spawn("git", revListArgs, this.srcOpts)
+    let catFile = git(["cat-file", "--batch-check"], {cwd: this.src})
+    let revList = git(revListArgs, {cwd: this.src})
     revList.stdout.pipe(catFile.stdin)
 
     // convert the list to depth first ordering, which is a reversal of
@@ -90,13 +87,9 @@ class Mirror {
     if (this.push) {
       if (lastCommit) {
         log.verbose("updating ref in dst %s %s", ref, lastCommit)
-        let updateRef = spawnSync("git", ["update-ref", ref, lastCommit], this.dstOpts)
-        if (updateRef.status != 0) {
-          log.error("failed to update-ref %s %s", ref, lastCommit)
-          exit(updateRef.status)
-        }
+        gitSync(["update-ref", ref, lastCommit], {cwd: this.dst})
       }
-      return await update(this.dstOpts, this.refmaptag, this.refmap)
+      return await update(this.dst, this.refmaptag, this.refmap)
     }
   }
 
@@ -115,7 +108,7 @@ class Mirror {
           break
         default:
           log.error("unexpected object", obj)
-          exit(1)
+          process.exit(1)
       }
     }
     return last
@@ -123,8 +116,8 @@ class Mirror {
 
   mirrorBlob = async (oid) => {
     log.debug("mirroring blob %s", oid)
-    let hashObject = spawn("git", ["hash-object", "-w", "--stdin", "-t", "blob"], this.dstOpts)
-    let catFile = spawn("git", ["cat-file", "blob", oid], this.srcOpts)
+    let hashObject = git(["hash-object", "-w", "--stdin", "-t", "blob"], { cwd: this.dst })
+    let catFile = git(["cat-file", "blob", oid], { cwd: this.src })
     this.cryptStream(this.key, catFile.stdout, hashObject.stdin)
     let res = await line(hashObject.stdout)
     log.verbose("mirrored blob %s=>%s", oid, res)
@@ -137,7 +130,7 @@ class Mirror {
     // with mutated refs
     log.debug("mirroring tree %s", oid)
 
-    let lsTree = spawn("git", ['ls-tree', oid], this.srcOpts)
+    let lsTree = git(['ls-tree', oid], { cwd: this.src })
     let objs = ""
 
     for await (const line of lines(lsTree.stdout)) {
@@ -148,7 +141,7 @@ class Mirror {
     }
 
     log.debug("making tree with objects:\n%s", objs)
-    let mktree = spawn("git", ["mktree"], this.dstOpts)
+    let mktree = git(["mktree"], { cwd: this.dst })
     mktree.stdin.write(objs)
     mktree.stdin.end()
     let res = await line(mktree.stdout)
@@ -158,20 +151,18 @@ class Mirror {
   }
 
   COMMIT_ENV = {
-    ...process.env, ...{
-      GIT_AUTHOR_DATE: "1977-06-10T12:00:00",
-      GIT_COMMITTER_DATE: "1994-10-13T12:00:00",
-      GIT_AUTHOR_EMAIL: "ldv@gitern.com",
-      GIT_AUTHOR_NAME: "Leonardo da Vinci",
-      GIT_COMMITTER_EMAIL: "ldv@gitern.com",
-      GIT_COMMITTER_NAME: "Leonardo da Vinci",
-    }
+    GIT_AUTHOR_DATE: "1977-06-10T12:00:00",
+    GIT_COMMITTER_DATE: "1994-10-13T12:00:00",
+    GIT_AUTHOR_EMAIL: "ldv@gitern.com",
+    GIT_AUTHOR_NAME: "Leonardo da Vinci",
+    GIT_COMMITTER_EMAIL: "ldv@gitern.com",
+    GIT_COMMITTER_NAME: "Leonardo da Vinci",
   }
 
   // TODO: test merges
   mirrorCommit = async (commit, parent) => {
     // get the tree to the commit
-    let logTree = spawn("git", ["log", "--pretty=%T\ %P", "-n", "1", commit], this.srcOpts)
+    let logTree = git(["log", "--pretty=%T\ %P", "-n", "1", commit], { cwd: this.src })
     let srcTree = await line(logTree.stdout)
     let [tree, ...parents] = srcTree.split(/[ \t]/)
     log.debug("mirroring commit %s with tree %s parents %o", commit, tree, parents)
@@ -187,16 +178,15 @@ class Mirror {
           args.push("-p", key)
         }
       }
-      let commitTree = spawn("git", args, { ...this.dstOpts, env: this.COMMIT_ENV })
-      let catFile = spawn("git", ["cat-file", "commit", commit], this.srcOpts)
-      commitTree.stdin.on('data', (d) => log.error("%s", d))
+      let commitTree = git(args, { cwd: this.dst, env: this.COMMIT_ENV })
+      let catFile = git(["cat-file", "commit", commit], { cwd: this.src })
       this.cryptStream(this.key, catFile.stdout, commitTree.stdin, 'base64')
       res = await line(commitTree.stdout)
     } else {
       // decrypt the message of the commit and hash the message
       // as a commit object
-      let logMsg = spawn("git", ["log", "--pretty=format:%B", "-n", "1", commit], this.srcOpts)
-      let hashObject = spawn("git", ["hash-object", "-w", "--stdin", "-t", "commit"], this.dstOpts)
+      let logMsg = git(["log", "--pretty=format:%B", "-n", "1", commit], { cwd: this.src })
+      let hashObject = git(["hash-object", "-w", "--stdin", "-t", "commit"], { cwd: this.dst })
       this.cryptStream(this.key, logMsg.stdout, hashObject.stdin, 'base64')
       res = await line(hashObject.stdout)
     }

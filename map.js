@@ -27,10 +27,10 @@ const get = async(dst, tag, key) => {
         return value
       }
     }
-    log.error("key %s not found", key)
+    log.verbose("key %s not found", key)
     return
   }
-  log.error("tag %s not found in %s", tag, dst)
+  log.verbose("tag %s not found in %s", tag, dst)
 }
 
 // TODO: this is necessarily O(N) unless we create a reverse map
@@ -46,10 +46,10 @@ const getKey = async(dst, tag, val) => {
         return key
       }
     }
-    log.error("val %s not found", val)
+    log.verbose("val %s not found", val)
     return
   }
-  log.error("tag %s not found in %s", tag, dst)
+  log.verbose("tag %s not found in %s", tag, dst)
 }
 
 const tagWriter = (dst) => {

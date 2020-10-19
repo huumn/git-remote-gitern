@@ -42,7 +42,7 @@ git-remote-gitern creates an encrypted object graph that has identical structure
 - *Blobs* are encrypted as is
 - *Trees* are rewritten to point to encrypted objects
     - Object names are encrypted and hex encoded
-- *Commit* objects are encrypted whole, base64 encoded, and stored as the message of the analogous commit in the encrypted repo
+- *Commit* objects are encrypted whole, base64 encoded, and stored as the message of the analogous encrypted commit
 
 Currently, the encrypted version of an unencrypted repo is stored inside the .git directory of the unencrypted repo. (Hence the space inefficiency.) On a push, encrypted copies of objects are stored in the encrypted repo then the encrypted repo is pushed to the remote. A fetch is this process in reverse.
 

@@ -1,6 +1,6 @@
 # git-remote-gitern
 
-git-remote-gitern is a git remote helper that end to end encrypts git repos without a custom remote receiver and without additional user key management. It's built for [gitern](https://gitern.com) and unironically hosted here. For demonstation purposes you can browse this repo encrypted using itself: [github.com/huumn/git-remote-gitern-encrypted](https://github.com/huumn/git-remote-gitern-encrypted)
+git-remote-gitern is a git remote helper that end to end encrypts git repos without a custom remote receiver and without additional user key management. It's built for [gitern](https://gitern.com) and is unironically hosted here. For demonstration, this repo has been encrypted using itself: [github.com/huumn/git-remote-gitern-encrypted](https://github.com/huumn/git-remote-gitern-encrypted)
 
 ## Installation
 

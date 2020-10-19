@@ -1,7 +1,10 @@
 {
     "name": "git-remote-gitern",
     "version": "1.0.0",
-    "main": "index.js",
+    "bin": {
+        "git-remote-gitern": "./git-remote-gitern"
+    },
+    "bugs": "mailto:keyan@gitern.com",
     "license": "MIT",
     "dependencies": {
         "findit": "^2.0.0",

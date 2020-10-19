@@ -127,7 +127,7 @@ class Keys {
       return sshpk.parsePrivateKey(privKeyRaw, 'auto', opts)
     } catch(e) {
       if (e instanceof sshpk.KeyEncryptedError) {
-        log.error("gitern encrypted repos do not support encrypted ssh keys currently")
+        log.warn("gitern encrypted repos do not support encrypted ssh keys currently")
         throw e
         // log.debug("key requires a password")
         // let password = await this.getPrivateKeyPass(privKeyFname)
@@ -188,7 +188,7 @@ class Keys {
       try {
         privKey = await this.getPrivateKey(privKeyFname, privKeyRaw.toString())
       } catch(e) {
-        log.error("could not decrypt ssh private key")
+        log.warn("could not decrypt ssh private key %s", privKeyFname)
         continue
       }
       const {oid} = this.lockedKeys.get(fp)

@@ -1,6 +1,6 @@
 # git-remote-gitern
 
-git-remote-gitern is a git remote helper that end to end encrypts git repos without a custom remote receiver and without additional user key management. It's built for gitern.com. For demonstation purposes an encrypted version of this repo can be browsed here:
+git-remote-gitern is a git remote helper that end to end encrypts git repos without a custom remote receiver and without additional user key management. It's built for [gitern](https://gitern.com). For demonstation purposes an encrypted version of this repo can be browsed here:
 
 ## Installation
 
@@ -10,7 +10,7 @@ npm install -g git-remote-gitern
 
 ## Usage
 
-You'll need a free gitern.com account. Push and pull encrypted gitern repos using a remote address like `gitern://some/path/to/repo`.
+You'll need a free [gitern](https://gitern.com) account. Push and pull encrypted gitern repos using a remote address like `gitern://some/path/to/repo`.
 
 ## Examples
 
@@ -46,10 +46,10 @@ git-remote-gitern creates an encrypted object graph that has identical structure
 
 Currently, the encrypted version of an unencrypted repo is stored inside the .git directory of the unencrypted repo. (Hence the space inefficiency.) On a push, encrypted copies of objects are stored in the encrypted repo then the encrypted repo is pushed to the remote. A fetch is this process in reverse.
 
-The algorithm used to encrypt objects is AES-256-CBC and each object gets a randomly generated IV. Delta compression is ineffective.
+The algorithm used to encrypt objects is `AES-256-CBC` and each object gets a randomly generated IV. Delta compression is ineffective.
 
 ## How key management works
-A symmetric key is generated for each repo and is used to encrypt the repo. For each ssh public key on the gitern.com account, the symmetric key is encrypted with this ssh public key and stored in the encrypted repo. Thus any computer with an ssh private key corresponding to an ssh public key used to encrypt the symmetric key can decrypt a git-remote-gitern repo.
+A symmetric key is generated for each repo and is used to encrypt the repo. For each ssh public key on the [gitern](https://gitern.com) account, the symmetric key is encrypted with this ssh public key and stored in the encrypted repo. Thus any computer with an ssh private key corresponding to an ssh public key used to encrypt the symmetric key can decrypt a git-remote-gitern repo.
 
 ## Contributing
 Pull requests are welcome.

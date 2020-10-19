@@ -37,7 +37,7 @@ These will be the targeted in future releases.
 4. Space inefficient
 
 ## How it works
-git-remote-gitern creates an encrypted object graph that has identical structure to your git repo's unencrypted object graph. This encrypted object graph behaves like any other git repo but all of its objects are encrypted. It keeps track of the mapping between unencrypted and encrypted objects using a flat file stored in the encrypted repo. This mapping allows git-remote-gitern to determine the revision of an unencrypted repo relative to an encrypted one.
+git-remote-gitern creates an encrypted object graph that has mostly identical structure to your git repo's unencrypted object graph. This encrypted object graph behaves like any other git repo but all of its objects are encrypted. It keeps track of the mapping between unencrypted and encrypted objects using a flat file stored in the encrypted repo. This mapping allows git-remote-gitern to determine the revision of an unencrypted repo relative to an encrypted one.
 
 - *Blobs* are encrypted as is
 - *Trees* are rewritten to point to encrypted objects

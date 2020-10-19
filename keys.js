@@ -7,6 +7,7 @@ const fs = require('fs')
 const crypto = require('crypto')
 const log = require('./logger.js')
 const findit = require('findit')
+const { exit } = require('process')
 
 const FP_PREFIX = "SHA256:"
 const PUBEXT = ".pub"
@@ -27,12 +28,7 @@ class Keys {
     await this.loadLockedKeys()
 
     if (this.lockedKeys.size) {
-      try {
-        this.key = await this.unlock()
-      } catch(e) {
-        log.error("could not unlock encrytion keys with available ssh keys")
-        process.exit(1)
-      }
+      this.key = await this.unlock()
       log.debug("found existing encryption key")
     } else {
       this.key = this.generateKey()
@@ -104,18 +100,21 @@ class Keys {
     if (updated) this.saveLockedKeys()
   }
 
+  // TODO: not sure how to get this to work given stdin is being
+  // used by git
   getPrivateKeyPass = (privKeyFname) => {
     return new Promise((ok, err) => {
       log.debug("Prompting for password")
       require('read')({ 
           prompt: `Password for key ${privKeyFname}: `, 
-          silent: true, 
+          silent: true,
           output: process.stderr,
         }, (error, password) => {
           if (error) {
             log.error("problem reading password", error)
             err(error)
           } else {
+            log.info("got password")
             ok(password)
           }        
         })
@@ -128,7 +127,7 @@ class Keys {
       return sshpk.parsePrivateKey(privKeyRaw, 'auto', opts)
     } catch(e) {
       if (e instanceof sshpk.KeyEncryptedError) {
-        console.error("gitern encrypted repos do not support encrypted ssh keys currently")
+        log.error("gitern encrypted repos do not support encrypted ssh keys currently")
         throw e
         // log.debug("key requires a password")
         // let password = await this.getPrivateKeyPass(privKeyFname)
@@ -139,13 +138,13 @@ class Keys {
     }
   }
 
-  unlock = () => {
+  findKeyFiles = () => {
     return new Promise((resolve, reject) => {
       let sshdir = path.join(require('os').homedir(), '.ssh')
       let finder = findit(sshdir)
+      let files = []
       log.debug("looking for gitern ssh keys in %s", sshdir)
   
-      // TODO: make this syncronous so we can collect ssh passwords
       finder.on('file', (file, stat) => {
         if (path.extname(file) != PUBEXT) {
           return
@@ -159,25 +158,7 @@ class Keys {
           log.debug("file is an ssh key with fingerprint %s", fp)
           if (this.lockedKeys.has(fp)) {
             log.debug("file %s matches fp %s", file, fp)
-            // attempt to read private key file
-            let privKeyFname = file.slice(0, -1*PUBEXT.length)
-            let privKeyRaw = fs.readFileSync(privKeyFname)
-            this.getPrivateKey(privKeyFname, privKeyRaw.toString()).then((privKey) => {
-              finder.stop()
-
-              const {oid} = this.lockedKeys.get(fp)
-              const catFile = gitSync(['cat-file', '-p', oid], { cwd : this.repo })
-              let key = crypto.privateDecrypt({
-                key: privKey.toBuffer('pkcs8'),
-                format: 'pem',
-                type: 'pkcs8',
-              }, Buffer.from(catFile.stdout))
-              if (key.length) {
-                resolve(key)
-              } else {
-                reject(new Error('empty key'))
-              }
-            })
+            files.push({fp, file})
           }
         } catch (e) {
           // we expect this to happen for non-key files
@@ -190,10 +171,36 @@ class Keys {
         reject(err)
       })
 
-      finder.on('end', function () {
-        reject(new Error(`Could not find matching ssh key in ${sshdir}`))
+      finder.on('end', () => {
+        resolve(files)
       })
     })
+  }
+
+  unlock = async() => {
+    let keyFiles = await this.findKeyFiles()
+
+    for (const {fp, file} of keyFiles) {
+      // attempt to read private key file
+      let privKeyFname = file.slice(0, -1*PUBEXT.length)
+      let privKeyRaw = fs.readFileSync(privKeyFname)
+      let privKey
+      try {
+        privKey = await this.getPrivateKey(privKeyFname, privKeyRaw.toString())
+      } catch(e) {
+        log.error("could not decrypt ssh private key")
+        continue
+      }
+      const {oid} = this.lockedKeys.get(fp)
+      const catFile = gitSync(['cat-file', '-p', oid], { cwd : this.repo })
+      return crypto.privateDecrypt({
+        key: privKey.toBuffer('pkcs8'),
+        format: 'pem',
+        type: 'pkcs8',
+      }, Buffer.from(catFile.stdout))
+    }
+    log.error("could not unlock encryption key with available ssh keys")
+    process.exit(1)
   }
 }
 

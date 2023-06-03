@@ -55,4 +55,4 @@ A symmetric key is generated for each repo and is used to encrypt the repo. For 
 Pull requests are welcome.
 
 ## License
-[GPLv3](https://choosealicense.com/licenses/gpl-3.0/)
+[MIT](https://choosealicense.com/licenses/MIT/)

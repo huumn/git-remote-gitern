@@ -55,4 +55,4 @@ A symmetric key is generated for each repo and is used to encrypt the repo. For 
 Pull requests are welcome.
 
 ## License
-[MIT](https://choosealicense.com/licenses/MIT/)
+[MIT](https://choosealicense.com/licenses/mit/)
